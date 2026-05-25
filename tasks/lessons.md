@@ -18,6 +18,12 @@ Patterns à suivre et erreurs à éviter — relire au début de chaque session 
 - **Cross-platform** : jamais de code Linux-only ou Win-only sans abstraction. Tester en CI mac+win+linux dès le scaffold.
 - **One concern par file** : modules Rust petits et focalisés, composants React idem.
 
+## CI / cross-platform
+
+- **`rustfmt` peut tourner localement même sans webkit2gtk** (il ne link pas). Toujours `cd src-tauri && cargo fmt --all --check` AVANT le commit, pas seulement `cargo check`. Sinon CI rouge sur Linux+Mac avec format diff.
+- **Windows runners + `prettier --check endOfLine: "lf"`** = piège classique. `core.autocrlf=true` (défaut Windows) convertit LF→CRLF au checkout, prettier fail. **Fix** : `.gitattributes` à la racine avec `* text=auto eol=lf` + binary markers (`.png` / `.icns` / etc.). À mettre dans tout repo cross-platform dès le scaffold.
+- **`concurrency.cancel-in-progress: true`** dans le workflow : un re-push annule le run précédent sur la même ref. Pratique pour ne pas saturer la queue GH Actions.
+
 ## Décisions design produit (figées)
 
 - **Brand** = warm sombre (mockup standalone). Palette `#0a0a0a` / `#1f1d1c` / `#181614` / accent purple `#7c3aed`. Pas zinc JacqCloud strict.

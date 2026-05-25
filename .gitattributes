@@ -1,0 +1,18 @@
+# Normalize line endings on commit and force LF on checkout for everyone.
+# Windows runners (and devs) otherwise see CRLF after checkout, which makes
+# `prettier --check` (configured with endOfLine: "lf") fail.
+* text=auto eol=lf
+
+# Explicitly mark binary files so git never tries to munge them.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.icns   binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.pdf    binary
+*.lockb  binary

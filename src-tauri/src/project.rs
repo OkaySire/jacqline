@@ -161,7 +161,11 @@ pub async fn project_update(
         name: patch.name.unwrap_or(current.name).trim().to_owned(),
         cwd: patch.cwd.unwrap_or(current.cwd).trim().to_owned(),
         shell_kind: patch.shell_kind.unwrap_or(current.shell_kind),
-        shell_value: patch.shell_value.unwrap_or(current.shell_value).trim().to_owned(),
+        shell_value: patch
+            .shell_value
+            .unwrap_or(current.shell_value)
+            .trim()
+            .to_owned(),
         provider: patch.provider.unwrap_or(current.provider),
         created_at: current.created_at,
         updated_at: now_millis(),

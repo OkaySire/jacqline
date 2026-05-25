@@ -7,7 +7,9 @@ use crate::error::{AppError, AppResult};
 pub async fn setting_get(db: State<'_, DbState>, key: String) -> AppResult<Option<String>> {
     let conn = db.lock()?;
     let result: rusqlite::Result<String> =
-        conn.query_row("SELECT value FROM settings WHERE key = ?1", [&key], |row| row.get(0));
+        conn.query_row("SELECT value FROM settings WHERE key = ?1", [&key], |row| {
+            row.get(0)
+        });
     match result {
         Ok(v) => Ok(Some(v)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),

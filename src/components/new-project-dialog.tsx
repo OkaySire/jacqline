@@ -1,6 +1,7 @@
 import { open as openDirectoryPicker } from "@tauri-apps/plugin-dialog";
-import { Folder } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+
+import { I } from "@/components/icons";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -196,7 +197,7 @@ export function NewProjectDialog() {
                   onClick={() => void pickDirectory()}
                   aria-label="Browse for directory"
                 >
-                  <Folder className="size-4" />
+                  <I.folder />
                 </Button>
               </div>
             </div>

@@ -1,9 +1,9 @@
-import { ExternalLink, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 
 import { CodeView } from "@/components/code-view";
+import { I } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { shellOpenExternal } from "@/lib/api/external";
@@ -145,7 +145,7 @@ export function FilePreview() {
             aria-label="Open in external editor"
             title="Open in external editor"
           >
-            <ExternalLink className="size-3.5" />
+            <I.external />
           </Button>
           <Button
             type="button"
@@ -155,7 +155,7 @@ export function FilePreview() {
             aria-label="Close preview"
             title="Close preview"
           >
-            <X className="size-3.5" />
+            <I.close />
           </Button>
         </div>
       </header>

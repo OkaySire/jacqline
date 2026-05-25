@@ -4,6 +4,7 @@ mod external;
 mod project;
 mod project_fs;
 mod pty;
+mod sessions;
 mod setting;
 mod shell;
 
@@ -85,6 +86,8 @@ pub fn run() {
             pty::session_kill,
             pty::pty_write,
             pty::pty_resize,
+            sessions::session_list_by_project,
+            sessions::session_update_meta,
             project_fs::fs_list,
             project_fs::fs_read,
             project_fs::fs_write,

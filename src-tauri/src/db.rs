@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
@@ -8,11 +8,22 @@ use crate::error::{AppError, AppResult};
 
 /// Connection pool of one — SQLite is single-writer anyway. WAL mode + a `Mutex` gives us
 /// concurrent reads from async Tauri commands without bringing in a full pool crate.
+///
+/// The connection is wrapped in an `Arc<Mutex<…>>` (not just `Mutex<…>`) so that long-lived
+/// background tasks — most notably the PTY waiter that records `status=stopped` on session
+/// exit — can hold their own owned reference instead of borrowing the Tauri-managed state
+/// (which is `'_` bound and not `Send`).
 pub struct DbState {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
-const MIGRATIONS: &[(&str, &str)] = &[("001_init", include_str!("../migrations/001_init.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("001_init", include_str!("../migrations/001_init.sql")),
+    (
+        "002_sessions",
+        include_str!("../migrations/002_sessions.sql"),
+    ),
+];
 
 impl DbState {
     /// Open (or create) the local SQLite database at `db_path`, enable WAL + foreign keys,
@@ -26,7 +37,7 @@ impl DbState {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         Self::migrate(&conn)?;
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         })
     }
 
@@ -63,6 +74,13 @@ impl DbState {
         self.conn
             .lock()
             .map_err(|_| AppError::Other("db connection mutex poisoned".into()))
+    }
+
+    /// Hand out an owned `Arc` to the connection mutex. Use this from background tasks
+    /// (PTY waiter, etc.) that need to outlive a Tauri command and therefore can't borrow
+    /// `State<'_, DbState>`.
+    pub fn arc(&self) -> Arc<Mutex<Connection>> {
+        Arc::clone(&self.conn)
     }
 }
 

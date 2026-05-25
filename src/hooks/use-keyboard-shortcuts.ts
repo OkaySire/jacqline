@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { useActiveProject, useProjectsStore } from "@/stores/projects";
-import { useSessionsStore } from "@/stores/sessions";
+import { useActiveSession, useSessionsStore } from "@/stores/sessions";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -9,8 +9,8 @@ import { useUiStore } from "@/stores/ui";
  *
  * - `Mod+N` — open New Project dialog
  * - `Mod+1..9` — switch to the Nth project in the sidebar
- * - `Mod+W` — kill the active project's session
- * - `Mod+R` — restart the active project's session
+ * - `Mod+W` — kill the active project's active session
+ * - `Mod+R` — restart the active project's active session
  *
  * `Mod` is `⌘` on macOS, `Ctrl` elsewhere. Each binding calls `preventDefault`
  * so we don't fall through to the browser/Tauri default (Cmd+R reload, Cmd+W
@@ -21,6 +21,7 @@ export function useKeyboardShortcuts(): void {
   const projects = useProjectsStore((s) => s.projects);
   const setActive = useProjectsStore((s) => s.setActive);
   const activeProject = useActiveProject();
+  const activeSession = useActiveSession(activeProject?.id ?? null);
   const killSession = useSessionsStore((s) => s.killSession);
   const ensureSession = useSessionsStore((s) => s.ensureSession);
   const clearExit = useSessionsStore((s) => s.clearExit);
@@ -41,9 +42,9 @@ export function useKeyboardShortcuts(): void {
         openNewProject();
         return;
       }
-      if (key === "w" && activeProject !== null) {
+      if (key === "w" && activeSession !== null) {
         event.preventDefault();
-        void killSession(activeProject.id).catch((err: unknown) => {
+        void killSession(activeSession.id).catch((err: unknown) => {
           console.error("killSession failed", err);
         });
         return;
@@ -51,9 +52,12 @@ export function useKeyboardShortcuts(): void {
       if (key === "r" && activeProject !== null) {
         event.preventDefault();
         const projectId: string = activeProject.id;
+        const sessionId: string | null = activeSession?.id ?? null;
         void (async () => {
           try {
-            await killSession(projectId);
+            if (sessionId !== null) {
+              await killSession(sessionId);
+            }
             clearExit(projectId);
             await ensureSession(projectId);
           } catch (err: unknown) {
@@ -78,5 +82,14 @@ export function useKeyboardShortcuts(): void {
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [openNewProject, projects, setActive, activeProject, killSession, ensureSession, clearExit]);
+  }, [
+    openNewProject,
+    projects,
+    setActive,
+    activeProject,
+    activeSession,
+    killSession,
+    ensureSession,
+    clearExit,
+  ]);
 }

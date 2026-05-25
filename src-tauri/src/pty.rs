@@ -1,39 +1,32 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
 
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
-use serde::{Deserialize, Serialize};
+use rusqlite::Connection;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 
-use crate::db::DbState;
+use crate::db::{DbState, now_millis};
 use crate::error::{AppError, AppResult};
 use crate::project::{self, Project, ShellKind};
+use crate::sessions::{self, SessionMeta, SessionStatus};
 
 const READ_BUFFER_BYTES: usize = 4096;
 const DEFAULT_COLS: u16 = 80;
 const DEFAULT_ROWS: u16 = 24;
 
-// ----- types ----------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionMeta {
-    pub id: String,
-    pub project_id: String,
-    pub pid: u32,
-    pub started_at: i64,
-}
+// ----- runtime handle -------------------------------------------------------
 
 /// Internal handle for a live PTY session.
 ///
 /// Dropping the handle drops the master PTY, which closes the slave fd, which
 /// causes the spawned child to receive `SIGHUP` (Unix) or its terminal to close
-/// (Windows). The wait task observes the exit, emits `pty:exit:<id>`, and the
-/// reader / writer tasks tear themselves down on the next read / closed
-/// channel.
+/// (Windows). The wait task observes the exit, persists `status=stopped` and
+/// emits `pty:exit:<id>`; the reader / writer tasks tear themselves down on
+/// the next read / closed channel.
 struct PtyHandle {
     meta: SessionMeta,
     master: Box<dyn MasterPty + Send>,
@@ -150,16 +143,6 @@ fn build_command(project: &Project) -> CommandBuilder {
     cmd
 }
 
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| {
-            let ms: u128 = d.as_millis();
-            i64::try_from(ms).unwrap_or(i64::MAX)
-        })
-        .unwrap_or(0)
-}
-
 #[derive(Serialize, Clone)]
 struct ExitPayload {
     code: Option<u32>,
@@ -173,10 +156,16 @@ pub async fn session_create(
     db: State<'_, DbState>,
     manager: State<'_, PtyManager>,
     project_id: String,
+    name: Option<String>,
 ) -> AppResult<SessionMeta> {
-    let project: Project = {
+    let (project, session_name): (Project, String) = {
         let conn = db.lock()?;
-        project::get_by_id(&conn, &project_id)?
+        let project: Project = project::get_by_id(&conn, &project_id)?;
+        let session_name: String = match name.as_ref().map(|s| s.trim()) {
+            Some(trimmed) if !trimmed.is_empty() => trimmed.to_owned(),
+            _ => sessions::next_default_name(&conn, &project_id)?,
+        };
+        (project, session_name)
     };
 
     let pty_system = native_pty_system();
@@ -214,9 +203,21 @@ pub async fn session_create(
     let meta = SessionMeta {
         id: session_id.clone(),
         project_id: project.id.clone(),
+        name: session_name,
+        claude_id: String::new(),
+        status: SessionStatus::Running,
         pid,
         started_at,
+        ended_at: None,
     };
+
+    // Persist before we expose the session anywhere — if the INSERT fails we
+    // haven't yet started any background tasks and the spawned child will be
+    // killed when we drop the master at function exit.
+    {
+        let conn = db.lock()?;
+        sessions::insert(&conn, &meta)?;
+    }
 
     let (write_tx, mut write_rx) = unbounded_channel::<Vec<u8>>();
 
@@ -261,15 +262,33 @@ pub async fn session_create(
         }
     });
 
-    // Waiter: blocks until child exits, then emits `pty:exit:<id>`. The
-    // manager entry is removed by the frontend in response to that event (it
-    // calls `session_kill` so the master fd is dropped synchronously).
+    // Waiter: blocks until child exits, then persists `status=stopped` in SQL
+    // and emits `pty:exit:<id>`.
     {
         let exit_event: String = format!("pty:exit:{session_id}");
         let app_handle: AppHandle = app.clone();
+        let session_id_for_wait: String = session_id.clone();
+        let db_arc: Arc<Mutex<Connection>> = db.arc();
         tokio::task::spawn_blocking(move || {
             let status = child.wait();
             let code: Option<u32> = status.ok().map(|s| s.exit_code());
+
+            match db_arc.lock() {
+                Ok(conn) => {
+                    if let Err(err) =
+                        sessions::mark_stopped(&conn, &session_id_for_wait, now_millis())
+                    {
+                        tracing::warn!(%err, session = %session_id_for_wait, "mark_stopped failed");
+                    }
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        session = %session_id_for_wait,
+                        "db mutex poisoned; cannot mark session stopped",
+                    );
+                }
+            }
+
             if let Err(err) = app_handle.emit(&exit_event, ExitPayload { code }) {
                 tracing::warn!(%err, "pty exit emit failed");
             }
@@ -285,6 +304,7 @@ pub async fn session_create(
     tracing::info!(
         session = %session_id,
         project = %project.id,
+        name = %meta.name,
         pid,
         shell_kind = ?project.shell_kind,
         shell_value = %project.shell_value,
@@ -323,12 +343,27 @@ pub async fn pty_resize(
 }
 
 #[tauri::command]
-pub async fn session_kill(manager: State<'_, PtyManager>, session_id: String) -> AppResult<()> {
+pub async fn session_kill(
+    db: State<'_, DbState>,
+    manager: State<'_, PtyManager>,
+    session_id: String,
+) -> AppResult<()> {
+    // Drop the PtyHandle first so the master closes (the waiter will mark the
+    // session stopped on its own), then explicitly mark stopped synchronously
+    // so the SQL state is consistent before this command returns even if the
+    // waiter is slow.
     let removed: bool = manager.remove(&session_id)?;
-    if !removed {
-        return Err(AppError::NotFound);
+    {
+        let conn = db.lock()?;
+        sessions::mark_stopped(&conn, &session_id, now_millis())?;
     }
-    tracing::info!(session = %session_id, "session killed");
+    if !removed {
+        // The PTY was already gone (e.g. natural exit) — still report success
+        // since the SQL state is now consistent.
+        tracing::debug!(session = %session_id, "session_kill: pty handle already gone");
+    } else {
+        tracing::info!(session = %session_id, "session killed");
+    }
     Ok(())
 }
 

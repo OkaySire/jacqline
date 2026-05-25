@@ -51,6 +51,19 @@ pub struct ProjectPatch {
     pub provider: Option<String>,
 }
 
+pub(crate) fn get_by_id(conn: &rusqlite::Connection, id: &str) -> AppResult<Project> {
+    conn.query_row(
+        "SELECT id, name, cwd, shell_kind, shell_value, provider, created_at, updated_at \
+         FROM projects WHERE id = ?1",
+        [id],
+        row_to_project,
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound,
+        other => AppError::from(other),
+    })
+}
+
 fn row_to_project(row: &Row<'_>) -> rusqlite::Result<Project> {
     let shell_kind_str: String = row.get("shell_kind")?;
     let shell_kind: ShellKind = ShellKind::parse(&shell_kind_str).map_err(|e| {
@@ -144,17 +157,7 @@ pub async fn project_update(
 ) -> AppResult<Project> {
     let conn = db.lock()?;
 
-    let current: Project = conn
-        .query_row(
-            "SELECT id, name, cwd, shell_kind, shell_value, provider, created_at, updated_at \
-             FROM projects WHERE id = ?1",
-            [&id],
-            row_to_project,
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound,
-            other => AppError::from(other),
-        })?;
+    let current: Project = get_by_id(&conn, &id)?;
 
     let updated: Project = Project {
         id: current.id.clone(),

@@ -1,6 +1,7 @@
 mod db;
 mod error;
 mod project;
+mod pty;
 mod setting;
 mod shell;
 
@@ -26,6 +27,7 @@ pub fn run() {
             let db_path = data_dir.join("jacqline.db");
             let db_state = db::DbState::new(&db_path)?;
             app.manage(db_state);
+            app.manage(pty::PtyManager::new());
             tracing::info!(path = %db_path.display(), "db initialized");
             Ok(())
         })
@@ -37,6 +39,11 @@ pub fn run() {
             setting::setting_get,
             setting::setting_set,
             shell::detect_shells,
+            pty::session_create,
+            pty::session_list,
+            pty::session_kill,
+            pty::pty_write,
+            pty::pty_resize,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

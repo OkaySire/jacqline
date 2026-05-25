@@ -18,6 +18,9 @@ pub enum AppError {
     #[error("tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 
+    #[error("pty error: {0}")]
+    Pty(String),
+
     #[error("{0}")]
     Other(String),
 }

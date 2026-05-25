@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import { fsList } from "@/lib/api/fs";
 import { cn } from "@/lib/utils";
+import { useFileViewerStore } from "@/stores/file-viewer";
 import type { DirEntry } from "@/types/fs";
 
 interface FileTreeProps {
@@ -42,6 +43,10 @@ export function FileTree({ projectId }: FileTreeProps) {
     new Map(),
   );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set([""]));
+  const openFile = useFileViewerStore((s) => s.openFile);
+  const selectedFile = useFileViewerStore((s) => s.selectedFile);
+  const activeRelPath: string | null =
+    selectedFile !== null && selectedFile.projectId === projectId ? selectedFile.relPath : null;
 
   const loadDir = useCallback(
     (relPath: string): void => {
@@ -95,6 +100,13 @@ export function FileTree({ projectId }: FileTreeProps) {
 
   const rootState: ChildrenState | undefined = childrenByPath.get("");
 
+  const handleFileClick = useCallback(
+    (relPath: string, name: string): void => {
+      openFile({ projectId, relPath, name });
+    },
+    [openFile, projectId],
+  );
+
   return (
     <div className="font-mono text-xs">
       {rootState === undefined && <p className="text-muted-foreground px-2 py-1">Loading…</p>}
@@ -109,6 +121,8 @@ export function FileTree({ projectId }: FileTreeProps) {
           expanded={expanded}
           childrenByPath={childrenByPath}
           onToggleDir={toggleDir}
+          onFileClick={handleFileClick}
+          activeRelPath={activeRelPath}
         />
       )}
     </div>
@@ -122,6 +136,8 @@ interface TreeChildrenProps {
   readonly expanded: ReadonlySet<string>;
   readonly childrenByPath: ReadonlyMap<string, ChildrenState>;
   readonly onToggleDir: (relPath: string) => void;
+  readonly onFileClick: (relPath: string, name: string) => void;
+  readonly activeRelPath: string | null;
 }
 
 function TreeChildren({
@@ -131,6 +147,8 @@ function TreeChildren({
   expanded,
   childrenByPath,
   onToggleDir,
+  onFileClick,
+  activeRelPath,
 }: TreeChildrenProps) {
   if (entries.length === 0) {
     return (
@@ -152,6 +170,8 @@ function TreeChildren({
             expanded={expanded}
             childrenByPath={childrenByPath}
             onToggleDir={onToggleDir}
+            onFileClick={onFileClick}
+            activeRelPath={activeRelPath}
           />
         );
       })}
@@ -166,15 +186,27 @@ interface TreeRowProps {
   readonly expanded: ReadonlySet<string>;
   readonly childrenByPath: ReadonlyMap<string, ChildrenState>;
   readonly onToggleDir: (relPath: string) => void;
+  readonly onFileClick: (relPath: string, name: string) => void;
+  readonly activeRelPath: string | null;
 }
 
-function TreeRow({ entry, path, depth, expanded, childrenByPath, onToggleDir }: TreeRowProps) {
+function TreeRow({
+  entry,
+  path,
+  depth,
+  expanded,
+  childrenByPath,
+  onToggleDir,
+  onFileClick,
+  activeRelPath,
+}: TreeRowProps) {
   const isDir: boolean = entry.kind === "dir";
   const isOpen: boolean = isDir && expanded.has(path);
   const childState: ChildrenState | undefined = isDir ? childrenByPath.get(path) : undefined;
+  const isSelected: boolean = !isDir && activeRelPath === path;
   const iconClass: string = cn(
     "size-3.5 shrink-0",
-    isDir ? "text-primary/80" : "text-muted-foreground",
+    isDir ? "text-primary/80" : isSelected ? "text-primary" : "text-muted-foreground",
   );
 
   return (
@@ -184,11 +216,13 @@ function TreeRow({ entry, path, depth, expanded, childrenByPath, onToggleDir }: 
         onClick={() => {
           if (isDir) {
             onToggleDir(path);
+          } else {
+            onFileClick(path, entry.name);
           }
         }}
         className={cn(
           "hover:bg-popover/60 flex h-7 w-full items-center gap-1 rounded px-1 text-left text-xs transition-colors",
-          !isDir && "cursor-default",
+          isSelected && "bg-primary/20 hover:bg-primary/25",
         )}
         style={{ paddingLeft: indentPx(depth) }}
       >
@@ -238,6 +272,8 @@ function TreeRow({ entry, path, depth, expanded, childrenByPath, onToggleDir }: 
               expanded={expanded}
               childrenByPath={childrenByPath}
               onToggleDir={onToggleDir}
+              onFileClick={onFileClick}
+              activeRelPath={activeRelPath}
             />
           )}
         </>

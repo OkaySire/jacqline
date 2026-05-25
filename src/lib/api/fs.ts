@@ -30,3 +30,7 @@ export async function fsRead(projectId: string, relPath: string): Promise<Uint8A
   const bytes: number[] = await invoke<number[]>("fs_read", { projectId, relPath });
   return new Uint8Array(bytes);
 }
+
+export async function fsWrite(projectId: string, relPath: string, data: Uint8Array): Promise<void> {
+  await invoke<void>("fs_write", { projectId, relPath, data: Array.from(data) });
+}

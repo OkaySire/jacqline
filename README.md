@@ -50,7 +50,22 @@ Want to try the app without installing a Rust/Bun toolchain?
 | **Windows**     | [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Win 11)                                                                                                              |
 | **Linux / WSL** | `webkit2gtk-4.1`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`, `pkg-config`, `build-essential`. On Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev pkg-config build-essential curl wget file` |
 
-### Install + run
+### Quick start (one-shot setup script)
+
+Each platform ships a script that detects what's missing, installs it (via
+`winget` / `apt` / Homebrew), runs `bun install`, and offers to launch
+`bun run tauri dev`. All three are idempotent — safe to re-run.
+
+| Platform                          | Command                                                                                                        |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Windows**                       | `pwsh -File .\scripts\setup-windows.ps1` (may need `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once) |
+| **macOS**                         | `./scripts/setup-macos.sh`                                                                                     |
+| **Linux / WSL (Debian / Ubuntu)** | `./scripts/setup-linux.sh`                                                                                     |
+
+Pass `-NoRun` (Windows) or `--no-run` (macOS / Linux) to skip the dev-server
+launch prompt.
+
+### Manual install
 
 ```bash
 bun install

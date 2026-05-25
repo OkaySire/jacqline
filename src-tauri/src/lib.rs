@@ -7,25 +7,64 @@ mod pty;
 mod setting;
 mod shell;
 
-use tauri::Manager;
-use tracing_subscriber::EnvFilter;
+use std::path::PathBuf;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+use tauri::Manager;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::writer::MakeWriterExt;
+
+fn init_logging(log_dir: &PathBuf) -> Result<WorkerGuard, std::io::Error> {
+    std::fs::create_dir_all(log_dir)?;
+    let file_appender = tracing_appender::rolling::daily(log_dir, "jacqline.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("info,jacqline=debug,jacqline_lib=debug")),
         )
+        .with_writer(non_blocking.and(std::io::stderr))
         .with_target(false)
+        .with_ansi(false)
         .init();
 
-    tracing::info!("Jacqline starting");
+    Ok(guard)
+}
 
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location: String = match info.location() {
+            Some(loc) => format!("{}:{}:{}", loc.file(), loc.line(), loc.column()),
+            None => "<unknown>".to_owned(),
+        };
+        let payload: &str = info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("<non-string panic payload>");
+        tracing::error!(location = %location, payload = %payload, "rust panic");
+        default_hook(info);
+    }));
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
+            let log_dir = data_dir.join("logs");
+            let guard: WorkerGuard = init_logging(&log_dir)?;
+            // Keep the appender's worker thread alive for the lifetime of the
+            // process. Without this the file writes drop silently.
+            Box::leak(Box::new(guard));
+
+            install_panic_hook();
+            tracing::info!(path = %log_dir.display(), "Jacqline starting");
+
             let db_path = data_dir.join("jacqline.db");
             let db_state = db::DbState::new(&db_path)?;
             app.manage(db_state);

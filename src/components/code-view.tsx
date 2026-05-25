@@ -8,6 +8,7 @@ import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { useEffect, useRef, useState } from "react";
 
 import { fsWrite } from "@/lib/api/fs";
+import { useSettingsStore } from "@/stores/settings";
 
 interface CodeViewProps {
   readonly text: string;
@@ -47,40 +48,46 @@ function languageFor(filename: string): Extension[] {
   return [];
 }
 
-const JACQLINE_THEME: Extension = EditorView.theme(
-  {
-    "&": {
-      backgroundColor: "transparent",
-      color: "#f2f2f2",
-      height: "100%",
-      fontSize: "13px",
+function jacqlineTheme(fontFamily: string, fontSize: number): Extension {
+  return EditorView.theme(
+    {
+      "&": {
+        backgroundColor: "transparent",
+        color: "#f2f2f2",
+        height: "100%",
+        fontSize: `${String(fontSize)}px`,
+      },
+      ".cm-content": {
+        fontFamily,
+        caretColor: "#7c3aed",
+      },
+      ".cm-scroller": { fontFamily: "inherit" },
+      ".cm-gutters": {
+        backgroundColor: "transparent",
+        color: "#5a5754",
+        border: "none",
+      },
+      ".cm-activeLineGutter": { backgroundColor: "rgba(124, 58, 237, 0.08)" },
+      ".cm-activeLine": { backgroundColor: "rgba(124, 58, 237, 0.05)" },
+      ".cm-cursor": { borderLeftColor: "#7c3aed" },
+      "&.cm-focused": { outline: "none" },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+        backgroundColor: "rgba(124, 58, 237, 0.25)",
+      },
     },
-    ".cm-content": {
-      fontFamily: '"Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace',
-      caretColor: "#7c3aed",
-    },
-    ".cm-scroller": { fontFamily: "inherit" },
-    ".cm-gutters": {
-      backgroundColor: "transparent",
-      color: "#5a5754",
-      border: "none",
-    },
-    ".cm-activeLineGutter": { backgroundColor: "rgba(124, 58, 237, 0.08)" },
-    ".cm-activeLine": { backgroundColor: "rgba(124, 58, 237, 0.05)" },
-    ".cm-cursor": { borderLeftColor: "#7c3aed" },
-    "&.cm-focused": { outline: "none" },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-      backgroundColor: "rgba(124, 58, 237, 0.25)",
-    },
-  },
-  { dark: true },
-);
+    { dark: true },
+  );
+}
 
 export function CodeView({ text, filename, editable, projectId, relPath, onSaved }: CodeViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Font settings captured on mount — see the Terminal component for the same
+  // rationale.
+  const fontFamily: string = useSettingsStore.getState().fontFamily;
+  const fontSize: number = useSettingsStore.getState().fontSize;
 
   // Mount xterm-style: build the editor on mount, dispose on unmount. Switching
   // editable / language / file is handled by the `key` on the parent.
@@ -122,7 +129,7 @@ export function CodeView({ text, filename, editable, projectId, relPath, onSaved
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       saveKeymap,
-      JACQLINE_THEME,
+      jacqlineTheme(fontFamily, fontSize),
       EditorView.editable.of(editable),
       EditorView.lineWrapping,
       ...languageFor(filename),
@@ -139,7 +146,7 @@ export function CodeView({ text, filename, editable, projectId, relPath, onSaved
       view.destroy();
       viewRef.current = null;
     };
-  }, [text, filename, editable, projectId, relPath, onSaved]);
+  }, [text, filename, editable, projectId, relPath, onSaved, fontFamily, fontSize]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

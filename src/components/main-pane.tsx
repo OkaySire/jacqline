@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import { I } from "@/components/icons";
+import { Statusbar } from "@/components/statusbar";
 import { Terminal } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -32,9 +32,6 @@ export function MainPane() {
         console.error("loadProjectSessions failed", err);
         return;
       }
-      // The store has now refreshed sessionsByProject. Read it fresh and
-      // decide whether to auto-spawn. ensureSession itself short-circuits if
-      // a live session already exists.
       if (useSessionsStore.getState().lastExitByProject.has(projectId)) {
         return;
       }
@@ -46,9 +43,8 @@ export function MainPane() {
     })();
   }, [project, ensureSession, loadProjectSessions]);
 
-  // Render every currently-running session across all projects; hide the ones
-  // that aren't the active session of the active project. Keeps each xterm
-  // mounted so scrollback survives switching projects and switching sessions.
+  // All currently-running sessions across all projects. Each gets a hidden
+  // `<Terminal>` mount so scrollback survives switching project / session.
   const runningSessions: readonly SessionMeta[] = useMemo(() => {
     const out: SessionMeta[] = [];
     for (const [, sessions] of sessionsByProject) {
@@ -63,9 +59,8 @@ export function MainPane() {
 
   if (project === null) {
     return (
-      <section className="bg-popover border-border flex min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-2xl border p-8 text-center">
-        <I.terminal style={{ width: 48, height: 48 }} className="text-muted-foreground/40" />
-        <p className="text-muted-foreground">Select a project or create a new one.</p>
+      <section className="jq-content jq-content-empty">
+        <p className="jq-empty-msg">Select a project or create a new one.</p>
       </section>
     );
   }
@@ -73,23 +68,8 @@ export function MainPane() {
   const lastExit: SessionExitInfo | undefined = lastExitByProject.get(project.id);
 
   return (
-    <section className="bg-popover border-border flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border">
-      <header className="border-border/60 flex items-center gap-3 border-b px-4 py-3">
-        <I.terminal className="text-muted-foreground shrink-0" />
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium tracking-tight">
-            {project.name}
-            {activeSession !== null && (
-              <span className="text-muted-foreground/70 font-normal">
-                {" / "}
-                {activeSession.name}
-              </span>
-            )}
-          </h2>
-          <p className="text-muted-foreground truncate font-mono text-xs">{project.cwd}</p>
-        </div>
-      </header>
-      <div className="relative flex-1">
+    <section className="jq-content">
+      <div className="jq-xterm-wrap">
         {runningSessions.map((session: SessionMeta) => (
           <div
             key={session.id}
@@ -113,14 +93,15 @@ export function MainPane() {
           />
         )}
       </div>
+      <Statusbar project={project} session={activeSession} />
     </section>
   );
 }
 
 function SpawningState() {
   return (
-    <div className="bg-card/40 border-border absolute inset-4 flex items-center justify-center rounded-lg border border-dashed">
-      <p className="text-muted-foreground text-sm">Spawning session…</p>
+    <div className="bg-card/30 border-line-soft absolute inset-4 flex items-center justify-center rounded-lg border border-dashed">
+      <p className="text-fg-2 text-sm">Spawning session…</p>
     </div>
   );
 }
@@ -135,12 +116,12 @@ function ExitedBanner({
   const isError: boolean = exit.code === null || exit.code !== 0;
   const codeLabel: string = exit.code === null ? " (killed)" : ` with code ${exit.code}`;
   return (
-    <div className="bg-card/40 border-border absolute inset-4 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
-      <p className={isError ? "text-destructive text-sm" : "text-muted-foreground text-sm"}>
+    <div className="bg-card/30 border-line-soft absolute inset-4 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
+      <p className={isError ? "text-destructive text-sm" : "text-fg-2 text-sm"}>
         Session exited{codeLabel}.
       </p>
       {isError && (
-        <p className="text-muted-foreground max-w-md text-xs">
+        <p className="text-fg-3 max-w-md text-xs">
           If you didn't see <code className="font-mono">claude</code> start, make sure the provider
           command is on your PATH and try again.
         </p>

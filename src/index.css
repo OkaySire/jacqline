@@ -221,6 +221,160 @@ body {
   color: #fff;
 }
 
+/* ---- MainPane content + Statusbar (Phase E) -------------------------------
+ * The terminal area sits flush against the inspector to its right (no right
+ * border / radius) and carries the bg-terminal token, the darkest surface.
+ */
+.jq-content {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-bg-terminal);
+  border: 1px solid var(--color-line-soft);
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.02),
+    0 6px 16px oklch(0 0 0 / 0.18);
+}
+.jq-xterm-wrap {
+  background: var(--color-bg-terminal);
+  min-height: 0;
+  position: relative;
+  display: grid;
+  overflow: hidden;
+}
+.jq-content-empty {
+  display: grid;
+  place-items: center;
+  color: var(--color-fg-2);
+}
+.jq-empty-msg {
+  font-size: 13px;
+  color: var(--color-fg-2);
+}
+
+.jq-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 12px;
+  height: 26px;
+  background: var(--color-bg-1);
+  border-top: 1px solid var(--color-line-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-fg-2);
+  min-width: 0;
+}
+.jq-statusbar .jq-seg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.jq-statusbar .jq-seg .dim {
+  color: var(--color-fg-3);
+}
+.jq-statusbar .jq-seg-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+.jq-statusbar .jq-spacer {
+  flex: 1;
+}
+
+.jq-sb-cloud {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--color-line-soft);
+  background: var(--color-bg-2);
+  border-radius: 4px;
+  color: var(--color-fg-2);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+.jq-sb-cloud:hover {
+  background: var(--color-bg-3);
+  color: var(--color-fg-0);
+}
+.jq-sb-cloud-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+}
+.jq-sb-cloud-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 0 5px;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-line-soft);
+  border-radius: 3px;
+}
+.jq-sb-cloud.on {
+  color: var(--color-accent-fg);
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-line);
+}
+.jq-sb-cloud.on:hover {
+  background: oklch(0.66 0.18 295 / 0.22);
+}
+.jq-sb-cloud.on .jq-sb-cloud-state {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.jq-sb-cloud.off {
+  color: var(--color-fg-3);
+}
+.jq-sb-cloud.off .jq-sb-cloud-state {
+  color: var(--color-fg-3);
+}
+
+.jq-sb-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--color-line-soft);
+  height: 18px;
+}
+.jq-iconbtn-sm {
+  width: 22px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-fg-2);
+  cursor: pointer;
+}
+.jq-iconbtn-sm:hover:not(:disabled) {
+  background: var(--color-bg-2);
+  color: var(--color-fg-0);
+}
+.jq-iconbtn-sm.active {
+  background: var(--color-bg-3);
+  color: var(--color-fg-0);
+}
+.jq-iconbtn-sm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ---- Sidebar (Phase D) ----------------------------------------------------
  * Top action buttons (Nouveau projet primary + Customize) above a tree of
  * projects → sessions. Class names prefixed `jq-` to avoid collision with

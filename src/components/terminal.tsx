@@ -11,29 +11,29 @@ import { cn } from "@/lib/utils";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 
-// Background = `--color-popover` (#181614) so the terminal blends into the
-// MainPane wrapper card; matching cursorAccent keeps the cursor cutout clean.
+// Background = `--color-bg-terminal` from the V2 token set
+// (oklch(0.135 0.004 60) ≈ #1d1c1a). The wrapper around `.jq-xterm-wrap` uses
+// the same token so there's no visible seam.
 const JACQLINE_THEME: ITheme = {
-  background: "#181614",
-  foreground: "#f2f2f2",
-  cursor: "#7c3aed",
-  cursorAccent: "#181614",
-  selectionBackground: "#2e2b29",
-  selectionForeground: "#f2f2f2",
-  // Standard 16-color ANSI palette tuned to read well on the warm dark bg.
-  black: "#181614",
-  red: "#f06565",
-  green: "#7ec27a",
-  yellow: "#e8c468",
-  blue: "#7aa6f0",
-  magenta: "#b48ef0",
+  background: "#1d1c1a",
+  foreground: "#e8e7e5",
+  cursor: "#a78bfa",
+  cursorAccent: "#1d1c1a",
+  selectionBackground: "#3a3735",
+  selectionForeground: "#e8e7e5",
+  black: "#1a1816",
+  red: "#e07a7a",
+  green: "#7cc78a",
+  yellow: "#dab464",
+  blue: "#7d9ee5",
+  magenta: "#b794f6",
   cyan: "#6cc6c2",
   white: "#d4d2cf",
   brightBlack: "#5a5754",
-  brightRed: "#ff7d7d",
-  brightGreen: "#9adf91",
-  brightYellow: "#ffd986",
-  brightBlue: "#9ec2ff",
+  brightRed: "#ff8e8e",
+  brightGreen: "#9ada9c",
+  brightYellow: "#f0cb7a",
+  brightBlue: "#9bb7f0",
   brightMagenta: "#cba8ff",
   brightCyan: "#86dfd9",
   brightWhite: "#ffffff",
@@ -162,8 +162,8 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
 
   return (
     <div
-      className={cn("h-full w-full p-3", hidden && "hidden")}
-      style={{ backgroundColor: JACQLINE_THEME.background }}
+      className={cn("h-full w-full", hidden && "hidden")}
+      style={{ backgroundColor: JACQLINE_THEME.background, padding: "14px 18px 18px" }}
     >
       <div ref={innerRef} className="h-full w-full overflow-hidden" />
     </div>

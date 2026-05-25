@@ -43,6 +43,9 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Shell-style tokenizer for the user-configured external_editor template
+shlex = "1"
+
 [profile.release]
 codegen-units = 1
 lto = true

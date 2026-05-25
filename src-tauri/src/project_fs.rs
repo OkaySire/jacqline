@@ -32,16 +32,13 @@ pub struct DirEntry {
     pub modified: Option<i64>,
 }
 
-/// Resolve `<project.cwd>/<rel_path>` and ensure the result is still inside
-/// the cwd after symlink resolution. Returns the canonical absolute path.
-fn resolve_scoped(project: &Project, rel_path: &str) -> AppResult<PathBuf> {
-    let cwd: PathBuf = PathBuf::from(&project.cwd)
+fn canonical_cwd(project: &Project) -> AppResult<PathBuf> {
+    PathBuf::from(&project.cwd)
         .canonicalize()
-        .map_err(|e| AppError::Validation(format!("project cwd is not accessible: {e}")))?;
+        .map_err(|e| AppError::Validation(format!("project cwd is not accessible: {e}")))
+}
 
-    // Reject absolute and parent-traversal segments up front. We do a second
-    // post-canonicalize starts_with check below, but failing here yields a
-    // clearer error message than "symlink escaped sandbox".
+fn reject_traversal(rel_path: &str) -> AppResult<()> {
     for component in Path::new(rel_path).components() {
         match component {
             std::path::Component::Normal(_) | std::path::Component::CurDir => {}
@@ -52,6 +49,14 @@ fn resolve_scoped(project: &Project, rel_path: &str) -> AppResult<PathBuf> {
             }
         }
     }
+    Ok(())
+}
+
+/// Resolve an **existing** `<project.cwd>/<rel_path>` and ensure the result
+/// is still inside the cwd after symlink resolution.
+pub(crate) fn resolve_scoped(project: &Project, rel_path: &str) -> AppResult<PathBuf> {
+    let cwd: PathBuf = canonical_cwd(project)?;
+    reject_traversal(rel_path)?;
 
     let target: PathBuf = cwd.join(rel_path);
     let canonical: PathBuf = target
@@ -67,7 +72,36 @@ fn resolve_scoped(project: &Project, rel_path: &str) -> AppResult<PathBuf> {
     Ok(canonical)
 }
 
-fn load_project(db: &DbState, project_id: &str) -> AppResult<Project> {
+/// Resolve a path that may not exist yet (for `fs_write` of a new file).
+/// Canonicalizes the parent directory and verifies it's inside the cwd, then
+/// joins the file name back. Rejects writes whose **parent** doesn't already
+/// exist — we don't create directories on the user's behalf.
+fn resolve_scoped_for_write(project: &Project, rel_path: &str) -> AppResult<PathBuf> {
+    let cwd: PathBuf = canonical_cwd(project)?;
+    reject_traversal(rel_path)?;
+
+    let target: PathBuf = cwd.join(rel_path);
+    let parent: &Path = target
+        .parent()
+        .ok_or_else(|| AppError::Validation("path has no parent directory".into()))?;
+    let file_name = target
+        .file_name()
+        .ok_or_else(|| AppError::Validation("path has no file name".into()))?;
+
+    let parent_canon: PathBuf = parent
+        .canonicalize()
+        .map_err(|e| AppError::Validation(format!("parent directory not accessible: {e}")))?;
+
+    if !parent_canon.starts_with(&cwd) {
+        return Err(AppError::Validation(format!(
+            "path resolves outside the project root: {rel_path}",
+        )));
+    }
+
+    Ok(parent_canon.join(file_name))
+}
+
+pub(crate) fn load_project(db: &DbState, project_id: &str) -> AppResult<Project> {
     let conn = db.lock()?;
     project::get_by_id(&conn, project_id)
 }
@@ -149,4 +183,28 @@ pub async fn fs_read(
 
     let bytes: Vec<u8> = std::fs::read(&scoped)?;
     Ok(bytes)
+}
+
+#[tauri::command]
+pub async fn fs_write(
+    db: State<'_, DbState>,
+    project_id: String,
+    rel_path: String,
+    data: Vec<u8>,
+) -> AppResult<()> {
+    let project: Project = load_project(&db, &project_id)?;
+    let scoped: PathBuf = resolve_scoped_for_write(&project, &rel_path)?;
+
+    // If the target exists, refuse to overwrite a directory.
+    if let Ok(metadata) = std::fs::metadata(&scoped)
+        && metadata.is_dir()
+    {
+        return Err(AppError::Validation(format!(
+            "cannot write over a directory: {rel_path}",
+        )));
+    }
+
+    std::fs::write(&scoped, &data)?;
+    tracing::debug!(path = %scoped.display(), bytes = data.len(), "fs_write");
+    Ok(())
 }

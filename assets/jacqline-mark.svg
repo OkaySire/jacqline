@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Jacqline brand mark — source SVG. Used by `bunx tauri icon` to generate
+     the .ico / .icns / PNG files under src-tauri/icons/. -->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 48 48"
+>
+  <rect width="48" height="48" rx="12" fill="#7c3aed" />
+  <path
+    d="M 16 20 L 16 40 L 32 40"
+    stroke="#ffffff"
+    stroke-width="3"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

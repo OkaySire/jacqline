@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+bun-debug.log*
+
+# Build outputs
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+Thumbs.db
+
+# Env (we don't ship secrets — anything sensitive goes into the OS keychain)
+.env
+.env.*
+!.env.example
+
+# Runtime user data (per-OS app data dir is the source of truth)
+.jacqline/
+
+# Jacquouille bus runtime state (agent name, bus endpoint, etc. — local-only)
+.jacq/
+
+# Bun
+.bun/

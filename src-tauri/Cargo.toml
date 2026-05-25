@@ -1,0 +1,49 @@
+[package]
+name = "jacqline"
+version = "0.1.0"
+description = "Cross-platform desktop app to drive Claude (and other CLI agent) sessions, with native JacqCloud bus integration"
+authors = ["OkaySire"]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/OkaySire/jacqline"
+
+[lib]
+# The `_lib` suffix avoids name conflict with the bin on Windows.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "jacqline_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-dialog = "2"
+
+# Async + concurrency
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "fs", "process"] }
+
+# Cross-platform PTY (Phase 4)
+portable-pty = "0.9"
+
+# Filesystem watcher (Phase 5)
+notify = "8"
+
+# Serde + ids
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Errors + logging
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

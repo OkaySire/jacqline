@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+bun.lock
+bun.lockb
+src-tauri/target
+src-tauri/gen
+src-tauri/Cargo.lock
+docs/mockup.html
+LICENSE
+CHANGELOG.md
+CLAUDE.md
+docs/
+tasks/

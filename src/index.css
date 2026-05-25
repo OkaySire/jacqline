@@ -221,6 +221,209 @@ body {
   color: #fff;
 }
 
+/* ---- Customize / ProjectConfig modal shell (Phase F) ----------------------
+ * Custom modal (not shadcn Dialog) — 1100x740 fixed-size window with sidebar
+ * nav + content area. Used by both CustomizeWindow and ProjectConfigWindow.
+ */
+.jq-cust-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.jq-cust-scrim-backdrop {
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 0;
+  cursor: pointer;
+}
+.jq-cust-window {
+  position: relative;
+  width: min(1100px, 100%);
+  height: min(740px, 100%);
+  display: grid;
+  grid-template-rows: 48px 1fr;
+  background: var(--color-bg-0);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px oklch(0 0 0 / 0.5);
+  animation: jq-pop-in 140ms ease;
+}
+.jq-cust-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: var(--color-bg-1);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+.jq-cust-tb-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.jq-cust-tb-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-fg-0);
+}
+.jq-cust-tb-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-fg-3);
+}
+.jq-cust-tb-close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--color-fg-2);
+  cursor: pointer;
+}
+.jq-cust-tb-close:hover {
+  background: var(--color-bg-3);
+  color: var(--color-fg-0);
+}
+
+.jq-cust-body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 0;
+}
+.jq-cust-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px;
+  background: var(--color-bg-1);
+  border-right: 1px solid var(--color-line-soft);
+  overflow-y: auto;
+}
+.jq-cust-nav-heading {
+  padding: 10px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-fg-3);
+}
+.jq-cust-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--color-fg-1);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.jq-cust-nav-item:hover:not(:disabled) {
+  background: var(--color-bg-3);
+  color: var(--color-fg-0);
+}
+.jq-cust-nav-item.active {
+  background: var(--color-bg-3);
+  color: var(--color-fg-0);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.jq-cust-nav-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.jq-cust-nav-spacer {
+  flex: 1;
+  min-height: 8px;
+}
+
+.jq-cust-content {
+  padding: 28px 32px;
+  overflow-y: auto;
+}
+.jq-cust-content-header {
+  margin-bottom: 24px;
+}
+.jq-cust-content-header h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-fg-0);
+  margin: 0 0 6px;
+}
+.jq-cust-content-header p {
+  font-size: 13px;
+  color: var(--color-fg-2);
+  max-width: 60ch;
+  margin: 0;
+}
+.jq-cust-empty {
+  display: grid;
+  place-items: center;
+  padding: 60px 24px;
+  border: 1px dashed var(--color-line-soft);
+  border-radius: 10px;
+  color: var(--color-fg-3);
+  font-size: 12.5px;
+}
+
+.jq-pc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.jq-pc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.jq-pc-field-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-fg-2);
+}
+.jq-pc-field-value {
+  padding: 8px 10px;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-line-soft);
+  border-radius: 6px;
+  color: var(--color-fg-0);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+/* ---- SessionDialog (Phase F) ----------------------------------------------
+ * Eyebrow + agent tiles for the session form. The shell uses shadcn Dialog;
+ * the jq-ns-* / jq-agent-* classes are minimal additions.
+ */
+.jq-ns-eyebrow {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent-fg);
+}
+.jq-agent-tile {
+  cursor: pointer;
+  text-align: left;
+}
+.jq-agent-tile:focus-visible {
+  outline: 2px solid var(--color-accent-line);
+  outline-offset: 2px;
+}
+
 /* ---- MainPane content + Statusbar (Phase E) -------------------------------
  * The terminal area sits flush against the inspector to its right (no right
  * border / radius) and carries the bg-terminal token, the darkest surface.

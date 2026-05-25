@@ -1,12 +1,12 @@
-import { AboutDialog } from "@/components/about-dialog";
+import { CustomizeWindow } from "@/components/customize-window";
 import { MainPane } from "@/components/main-pane";
 import { NewProjectDialog } from "@/components/new-project-dialog";
+import { ProjectConfigWindow } from "@/components/project-config-window";
 import { RightPanel } from "@/components/right-panel";
-import { SettingsDialog } from "@/components/settings-dialog";
+import { SessionDialog } from "@/components/session-dialog";
 import { Sidebar } from "@/components/sidebar";
 import { TitleBar } from "@/components/title-bar";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useSessionsStore } from "@/stores/sessions";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -24,14 +24,11 @@ export function AppShell() {
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const inspectorHidden = useUiStore((s) => s.inspectorHidden);
   const openNewProject = useUiStore((s) => s.openNewProject);
-  const openSettings = useUiStore((s) => s.openSettings);
-  const createSession = useSessionsStore((s) => s.createSession);
+  const openCustomize = useUiStore((s) => s.openCustomize);
+  const openProjectConfig = useUiStore((s) => s.openProjectConfig);
+  const openNewSession = useUiStore((s) => s.openNewSession);
+  const openEditSession = useUiStore((s) => s.openEditSession);
 
-  // Customize / ProjectConfig / Edit-session windows live in Phase F. For
-  // Phase D we wire Customize to the existing Settings dialog (close-enough
-  // surrogate for the visible click target) and leave the other two as
-  // no-ops; the kebab items are rendered but disabled where they'd open the
-  // unimplemented modals.
   return (
     <>
       <div
@@ -42,27 +39,20 @@ export function AppShell() {
         <TitleBar />
         <div className="jq-main">
           <Sidebar
-            onOpenCustomize={openSettings}
+            onOpenCustomize={openCustomize}
             onNewProject={openNewProject}
-            onNewSession={(projectId: string) => {
-              void createSession(projectId).catch((err: unknown) => {
-                console.error("createSession failed", err);
-              });
-            }}
-            onEditSession={() => {
-              /* SessionDialog edit mode — Phase F */
-            }}
-            onOpenProjectConfig={() => {
-              /* ProjectConfigWindow — Phase F */
-            }}
+            onNewSession={openNewSession}
+            onEditSession={openEditSession}
+            onOpenProjectConfig={openProjectConfig}
           />
           <MainPane />
           {!inspectorHidden && <RightPanel />}
         </div>
       </div>
       <NewProjectDialog />
-      <SettingsDialog />
-      <AboutDialog />
+      <SessionDialog />
+      <CustomizeWindow />
+      <ProjectConfigWindow />
     </>
   );
 }

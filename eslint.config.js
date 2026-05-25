@@ -36,5 +36,14 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
     },
   },
+  // shadcn-generated UI primitives often co-export variant helpers (cva)
+  // alongside the component itself, which trips react-refresh and is awkward
+  // to split. Silence the rule for those files only.
+  {
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
   prettier,
 );

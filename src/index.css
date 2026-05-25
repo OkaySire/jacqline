@@ -1,35 +1,50 @@
 @import "tailwindcss";
 
-/*
- * Jacqline theme — Phase 0 baseline.
+/* Geist variable fonts — bundled via @fontsource-variable so the app stays
+ * offline-first. These pull the woff2 from node_modules and Vite serves them
+ * from the dist/. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Jacqline brand — warm dark palette validated 2026-05-25.
  *
- * Warm dark palette (#0a0a0a / #1f1d1c / #181614 family) inspired by the mockup
- * standalone, with the JacqCloud purple as primary accent. Final brand variation
- * (warm vs zinc-strict) to be confirmed with orchestrator/redesign before Phase 2.
+ *   #0a0a0a   background       — oklch(0.04 0 0)
+ *   #181614   popover deep     — oklch(0.11 0.005 30)
+ *   #1f1d1c   card / surface   — oklch(0.13 0.005 30)
+ *   #2e2b29   border           — oklch(0.18 0.003 30)
+ *   #7c3aed   primary accent   — oklch(0.55 0.2 285)
  */
 @theme {
-  --color-background: oklch(0.13 0.005 50);
-  --color-foreground: oklch(0.96 0.005 80);
-  --color-card: oklch(0.16 0.008 50);
-  --color-card-foreground: oklch(0.96 0.005 80);
-  --color-popover: oklch(0.16 0.008 50);
-  --color-popover-foreground: oklch(0.96 0.005 80);
-  --color-muted: oklch(0.18 0.008 50);
-  --color-muted-foreground: oklch(0.65 0.01 80);
-  --color-border: oklch(0.22 0.008 50);
-  --color-input: oklch(0.22 0.008 50);
-  --color-ring: oklch(0.55 0.2 265);
-  --color-primary: oklch(0.55 0.2 265);
-  --color-primary-foreground: oklch(0.98 0.005 80);
-  --color-secondary: oklch(0.22 0.008 50);
-  --color-secondary-foreground: oklch(0.96 0.005 80);
-  --color-accent: oklch(0.22 0.008 50);
-  --color-accent-foreground: oklch(0.96 0.005 80);
-  --color-destructive: oklch(0.55 0.22 25);
-  --color-destructive-foreground: oklch(0.98 0.005 80);
+  --color-background: oklch(0.04 0 0);
+  --color-foreground: oklch(0.95 0 0);
 
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "Menlo", monospace;
+  --color-card: oklch(0.13 0.005 30);
+  --color-card-foreground: oklch(0.95 0 0);
+
+  --color-popover: oklch(0.11 0.005 30);
+  --color-popover-foreground: oklch(0.95 0 0);
+
+  --color-muted: oklch(0.13 0.005 30);
+  --color-muted-foreground: oklch(0.7 0 0);
+
+  --color-border: oklch(0.18 0.003 30);
+  --color-input: oklch(0.18 0.003 30);
+  --color-ring: oklch(0.55 0.2 285);
+
+  --color-primary: oklch(0.55 0.2 285);
+  --color-primary-foreground: oklch(0.98 0 0);
+
+  --color-secondary: oklch(0.18 0.003 30);
+  --color-secondary-foreground: oklch(0.95 0 0);
+
+  --color-accent: oklch(0.18 0.003 30);
+  --color-accent-foreground: oklch(0.95 0 0);
+
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.98 0 0);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius: 0.5rem;
 }
@@ -53,4 +68,9 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
 }

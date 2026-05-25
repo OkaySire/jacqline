@@ -1,0 +1,58 @@
+name: Build Windows MSI
+
+# Produces a Windows installer (.msi) on every push to main and on manual
+# dispatch. The resulting artifact is downloadable from the workflow run page
+# under "Artifacts". Sufficient for users who want to try the app without
+# installing a Rust/Bun toolchain locally.
+#
+# Code signing + notarization + GitHub Release upload land in Phase 8
+# (release.yml). For now the MSI is unsigned — Windows SmartScreen will warn
+# the user on first run.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows MSI
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: build-windows-msi
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Tauri build (release + bundle)
+        run: bun run tauri build
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacqline-windows-msi-${{ github.sha }}
+          path: src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 14
+          if-no-files-found: error

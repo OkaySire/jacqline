@@ -18,6 +18,19 @@ native [JacqCloud](https://jacqcloud.com) bus integration.
 Out of scope for V0.1 — coming in later releases: JacqCloud bus integration,
 multi-provider picker, plugin SDK (Extism), auto-update, code signing.
 
+## Try Jacqline on Windows (no setup)
+
+Want to try the app without installing a Rust/Bun toolchain?
+
+1. Open the [Actions tab](https://github.com/OkaySire/jacqline/actions/workflows/build-windows.yml) on GitHub.
+2. Click the most recent **Build Windows MSI** run on `main`.
+3. Scroll to **Artifacts** and download `jacqline-windows-msi-<sha>`.
+4. Unzip and double-click the `.msi`.
+
+> The installer is **unsigned** in pre-V0.1, so Windows SmartScreen will show a
+> warning on first run — click _More info_ → _Run anyway_. Code signing lands
+> at Phase 8 (release CI).
+
 ## Stack
 
 - **Tauri 2** (Rust shell) + **React 19 + TypeScript + Vite** (renderer)

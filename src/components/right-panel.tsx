@@ -1,7 +1,6 @@
-import { FileSearch, FileText } from "lucide-react";
-
 import { FilePreview } from "@/components/file-preview";
 import { FileTree } from "@/components/file-tree";
+import { I } from "@/components/icons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveProject } from "@/stores/projects";
 import { useFileViewerStore } from "@/stores/file-viewer";
@@ -16,11 +15,11 @@ export function RightPanel() {
       <Tabs defaultValue="files" className="flex min-h-0 flex-1 flex-col">
         <TabsList className="m-3 grid grid-cols-2">
           <TabsTrigger value="files" className="gap-2">
-            <FileText className="size-4" />
+            <I.doc />
             Files
           </TabsTrigger>
           <TabsTrigger value="inspector" className="gap-2">
-            <FileSearch className="size-4" />
+            <I.search />
             Inspector
           </TabsTrigger>
         </TabsList>

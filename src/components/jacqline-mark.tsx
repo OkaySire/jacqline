@@ -1,32 +1,25 @@
+import { cn } from "@/lib/utils";
+
 interface JacqlineMarkProps {
+  /** Pixel size of the square. Calibrated for 18–22px (titlebar). */
   readonly size?: number;
   readonly className?: string;
 }
 
 /**
- * The Jacqline brand mark — a purple rounded square with a white corner stroke
- * inside. Identical geometry to the mockup (docs/mockup.html, viewBox normalized
- * to 48x48). Scaling via `size` preserves the radius/stroke proportions.
+ * Brand mark — purely CSS, no SVG. Three layers stacked via the element's
+ * background + `::after` (dark center) + `::before` (white corner stroke).
+ *
+ * Geometry tuned for `size=18` (the titlebar size). Resizing within 14–22px
+ * stays crisp; larger usage (about screen, splash) should add a dedicated
+ * `--large` modifier with bigger insets and stroke widths.
  */
-export function JacqlineMark({ size = 48, className }: JacqlineMarkProps) {
+export function JacqlineMark({ size = 18, className }: JacqlineMarkProps) {
   return (
-    <svg
-      viewBox="0 0 48 48"
-      width={size}
-      height={size}
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
+    <span
+      className={cn("jacqline-mark", className)}
+      style={{ width: size, height: size }}
       aria-hidden="true"
-    >
-      <rect width="48" height="48" rx="12" fill="#7c3aed" />
-      <path
-        d="M 16 20 L 16 40 L 32 40"
-        stroke="#ffffff"
-        strokeWidth="3"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    />
   );
 }

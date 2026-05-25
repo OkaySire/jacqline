@@ -1,6 +1,6 @@
-import { Terminal as TerminalIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
+import { I } from "@/components/icons";
 import { Terminal } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -64,7 +64,7 @@ export function MainPane() {
   if (project === null) {
     return (
       <section className="bg-popover border-border flex min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-2xl border p-8 text-center">
-        <TerminalIcon className="text-muted-foreground/40 size-12" />
+        <I.terminal style={{ width: 48, height: 48 }} className="text-muted-foreground/40" />
         <p className="text-muted-foreground">Select a project or create a new one.</p>
       </section>
     );
@@ -75,7 +75,7 @@ export function MainPane() {
   return (
     <section className="bg-popover border-border flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border">
       <header className="border-border/60 flex items-center gap-3 border-b px-4 py-3">
-        <TerminalIcon className="text-muted-foreground size-4 shrink-0" />
+        <I.terminal className="text-muted-foreground shrink-0" />
         <div className="min-w-0">
           <h2 className="truncate text-sm font-medium tracking-tight">
             {project.name}

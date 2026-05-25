@@ -1,15 +1,6 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  File as FileIcon,
-  FileCode,
-  FileJson,
-  FileText,
-  Folder,
-  FolderOpen,
-} from "lucide-react";
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { I } from "@/components/icons";
 import { fsList } from "@/lib/api/fs";
 import { cn } from "@/lib/utils";
 import { useFileViewerStore } from "@/stores/file-viewer";
@@ -205,7 +196,7 @@ function TreeRow({
   const childState: ChildrenState | undefined = isDir ? childrenByPath.get(path) : undefined;
   const isSelected: boolean = !isDir && activeRelPath === path;
   const iconClass: string = cn(
-    "size-3.5 shrink-0",
+    "shrink-0",
     isDir ? "text-primary/80" : isSelected ? "text-primary" : "text-muted-foreground",
   );
 
@@ -228,22 +219,14 @@ function TreeRow({
       >
         {isDir ? (
           isOpen ? (
-            <ChevronDown className="text-muted-foreground size-3 shrink-0" />
+            <I.chev_down className="text-muted-foreground shrink-0" />
           ) : (
-            <ChevronRight className="text-muted-foreground size-3 shrink-0" />
+            <I.chev className="text-muted-foreground shrink-0" />
           )
         ) : (
-          <span className="inline-block w-3 shrink-0" aria-hidden />
+          <span className="inline-block w-[10px] shrink-0" aria-hidden />
         )}
-        {isDir ? (
-          isOpen ? (
-            <FolderOpen className={iconClass} />
-          ) : (
-            <Folder className={iconClass} />
-          )
-        ) : (
-          fileIconFor(entry.name, iconClass)
-        )}
+        {isDir ? <I.folder className={iconClass} /> : <I.doc className={iconClass} />}
         <span className="truncate">{entry.name}</span>
       </button>
       {isDir && isOpen && (
@@ -285,43 +268,4 @@ function TreeRow({
 const INDENT_PX: number = 12;
 function indentPx(depth: number): number {
   return 4 + depth * INDENT_PX;
-}
-
-const TEXT_EXTENSIONS: readonly string[] = [".md", ".mdx", ".txt"];
-const JSON_EXTENSIONS: readonly string[] = [".json", ".jsonc", ".yaml", ".yml", ".toml"];
-const CODE_EXTENSIONS: readonly string[] = [
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".rs",
-  ".py",
-  ".go",
-  ".rb",
-  ".java",
-  ".c",
-  ".cpp",
-  ".h",
-  ".hpp",
-  ".cs",
-  ".sh",
-  ".bash",
-  ".zsh",
-  ".ps1",
-];
-
-function fileIconFor(filename: string, className: string): ReactElement {
-  const lower: string = filename.toLowerCase();
-  if (TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-    return <FileText className={className} />;
-  }
-  if (JSON_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-    return <FileJson className={className} />;
-  }
-  if (CODE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-    return <FileCode className={className} />;
-  }
-  return <FileIcon className={className} />;
 }

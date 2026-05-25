@@ -1,5 +1,4 @@
-import { Folder, Info, Plus, Settings } from "lucide-react";
-
+import { I } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useProjectsStore } from "@/stores/projects";
@@ -37,9 +36,9 @@ export function ProjectsSidebar() {
                   onClick={() => setActive(p.id)}
                   title={idx < 9 ? `Cmd/Ctrl+${idx + 1}` : undefined}
                 >
-                  <Folder
+                  <I.folder
                     className={cn(
-                      "size-3.5 shrink-0",
+                      "shrink-0",
                       activeId === p.id ? "text-primary" : "text-muted-foreground",
                     )}
                   />
@@ -52,7 +51,7 @@ export function ProjectsSidebar() {
       </div>
       <div className="border-border space-y-2 border-t p-3">
         <Button onClick={openNewProject} className="w-full" title="Cmd/Ctrl+N">
-          <Plus className="size-4" />
+          <I.plus />
           New project
         </Button>
         <div className="flex gap-2">
@@ -63,7 +62,7 @@ export function ProjectsSidebar() {
             onClick={openSettings}
             className="flex-1 justify-start"
           >
-            <Settings className="size-3.5" />
+            <I.cog />
             Settings
           </Button>
           <Button
@@ -73,7 +72,7 @@ export function ProjectsSidebar() {
             onClick={openAbout}
             className="flex-1 justify-start"
           >
-            <Info className="size-3.5" />
+            <I.sparkle />
             About
           </Button>
         </div>

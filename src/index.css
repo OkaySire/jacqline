@@ -1,52 +1,88 @@
 @import "tailwindcss";
 
 /* Geist variable fonts — bundled via @fontsource-variable so the app stays
- * offline-first. These pull the woff2 from node_modules and Vite serves them
- * from the dist/. */
+ * offline-first. */
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
-/* Jacqline brand — warm dark palette validated 2026-05-25.
- *
- *   #0a0a0a   background       — oklch(0.04 0 0)
- *   #181614   popover deep     — oklch(0.11 0.005 30)
- *   #1f1d1c   card / surface   — oklch(0.13 0.005 30)
- *   #2e2b29   border           — oklch(0.18 0.003 30)
- *   #7c3aed   primary accent   — oklch(0.55 0.2 285)
+/* Jacqline design tokens — derived 1:1 from the mockup
+ * (`tasks/design-spec-phase-4-5-v2.md` §Design tokens). Warm undertone (h=60),
+ * 4 surface levels + a dedicated `bg-terminal` for the PTY area, accent violet
+ * (h=295). The shadcn aliases below preserve compatibility with the existing
+ * shadcn UI primitives (`button.tsx`, `dialog.tsx`, …).
  */
 @theme {
-  --color-background: oklch(0.04 0 0);
-  --color-foreground: oklch(0.95 0 0);
+  /* Neutrals (warm, h=60 yellow undertone) */
+  --color-bg-0: oklch(0.16 0.004 60);
+  --color-bg-1: oklch(0.185 0.005 60);
+  --color-bg-2: oklch(0.21 0.006 60);
+  --color-bg-3: oklch(0.235 0.007 60);
+  --color-bg-terminal: oklch(0.135 0.004 60);
 
-  --color-card: oklch(0.13 0.005 30);
-  --color-card-foreground: oklch(0.95 0 0);
+  --color-line: oklch(0.27 0.008 60);
+  --color-line-soft: oklch(0.235 0.006 60);
 
-  --color-popover: oklch(0.11 0.005 30);
-  --color-popover-foreground: oklch(0.95 0 0);
+  --color-fg-0: oklch(0.96 0.005 60);
+  --color-fg-1: oklch(0.78 0.008 60);
+  --color-fg-2: oklch(0.58 0.008 60);
+  --color-fg-3: oklch(0.42 0.007 60);
 
-  --color-muted: oklch(0.13 0.005 30);
-  --color-muted-foreground: oklch(0.7 0 0);
+  /* Accent (violet family, h=295) */
+  --color-accent: oklch(0.66 0.18 295);
+  --color-accent-soft: oklch(0.66 0.18 295 / 0.16);
+  --color-accent-line: oklch(0.66 0.18 295 / 0.35);
+  --color-accent-fg: oklch(0.85 0.13 295);
 
-  --color-border: oklch(0.18 0.003 30);
-  --color-input: oklch(0.18 0.003 30);
-  --color-ring: oklch(0.55 0.2 285);
+  /* Semantic */
+  --color-ok: oklch(0.74 0.14 150);
+  --color-warn: oklch(0.78 0.14 80);
+  --color-err: oklch(0.68 0.18 25);
+  --color-info: oklch(0.74 0.12 230);
 
-  --color-primary: oklch(0.55 0.2 285);
+  /* Radii */
+  --radius-s: 6px;
+  --radius: 8px;
+  --radius-l: 12px;
+  --radius-xl: 16px;
+
+  /* App sizing */
+  --jq-sb-w: 248px;
+  --jq-sb-w-collapsed: 56px;
+  --jq-inspector-w: 360px;
+  --jq-titlebar-h: 38px;
+
+  --font-sans: "Geist Variable", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* ---- shadcn aliases — keep shadcn primitives working with our token set.
+   * Note: --color-accent here ≠ jacqline accent. shadcn's `accent` is the
+   * hover surface for ghost buttons (a darker neutral), while jacqline's
+   * accent is the violet. We expose jacqline's accent under
+   * `--color-primary` instead, which is the convention shadcn primitives
+   * use for the brand colour.
+   */
+  --color-background: var(--color-bg-0);
+  --color-foreground: var(--color-fg-0);
+  --color-card: var(--color-bg-1);
+  --color-card-foreground: var(--color-fg-0);
+  --color-popover: var(--color-bg-2);
+  --color-popover-foreground: var(--color-fg-0);
+  --color-muted: var(--color-bg-2);
+  --color-muted-foreground: var(--color-fg-2);
+  --color-border: var(--color-line-soft);
+  --color-input: var(--color-line);
+  --color-ring: var(--color-accent);
+  --color-primary: var(--color-accent);
   --color-primary-foreground: oklch(0.98 0 0);
-
-  --color-secondary: oklch(0.18 0.003 30);
-  --color-secondary-foreground: oklch(0.95 0 0);
-
-  --color-accent: oklch(0.18 0.003 30);
-  --color-accent-foreground: oklch(0.95 0 0);
-
-  --color-destructive: oklch(0.55 0.22 25);
+  --color-secondary: var(--color-bg-2);
+  --color-secondary-foreground: var(--color-fg-0);
+  --color-accent-foreground: var(--color-fg-0);
+  --color-destructive: var(--color-err);
   --color-destructive-foreground: oklch(0.98 0 0);
+}
 
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  --radius: 0.5rem;
+html {
+  color-scheme: dark;
 }
 
 html,
@@ -55,22 +91,55 @@ body,
   height: 100%;
 }
 
-html {
-  color-scheme: dark;
-}
-
 body {
   margin: 0;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background: #000; /* outer rim around .jq-app-frame in later phases */
+  color: var(--color-fg-0);
   font-family: var(--font-sans);
+  font-feature-settings: "ss01", "ss02", "cv01", "cv11";
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
 #root {
   display: flex;
   flex-direction: column;
+  background: var(--color-bg-0);
+}
+
+/* ---- Brand mark — CSS-only, three layers ----------------------------------
+ * Geometry calibrated for size=18 (titlebar). Within 14–22px it stays sharp.
+ */
+.jacqline-mark {
+  display: inline-block;
+  position: relative;
+  border-radius: 5px;
+  background: conic-gradient(
+    from 220deg at 50% 50%,
+    var(--color-accent),
+    oklch(0.5 0.16 270),
+    var(--color-accent)
+  );
+  box-shadow:
+    inset 0 0 0 1px oklch(1 0 0 / 0.12),
+    0 0 10px var(--color-accent-soft);
+}
+.jacqline-mark::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 3px;
+  background: var(--color-bg-0);
+}
+.jacqline-mark::before {
+  content: "";
+  position: absolute;
+  inset: 6px 5px 6px 7px;
+  border-left: 1.5px solid var(--color-fg-0);
+  border-bottom: 1.5px solid var(--color-fg-0);
+  border-bottom-left-radius: 2px;
+  z-index: 1;
 }

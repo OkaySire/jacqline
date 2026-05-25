@@ -1,6 +1,7 @@
 mod db;
 mod error;
 mod project;
+mod project_fs;
 mod pty;
 mod setting;
 mod shell;
@@ -44,6 +45,8 @@ pub fn run() {
             pty::session_kill,
             pty::pty_write,
             pty::pty_resize,
+            project_fs::fs_list,
+            project_fs::fs_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,5 @@
 import { Folder, Plus } from "lucide-react";
 
-import { JacqlineMark } from "@/components/jacqline-mark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useProjectsStore } from "@/stores/projects";
@@ -17,29 +16,32 @@ export function ProjectsSidebar({ onNewProject }: ProjectsSidebarProps) {
   const loading: boolean = useProjectsStore((s) => s.loading);
 
   return (
-    <aside className="bg-card border-border flex w-60 shrink-0 flex-col border-r">
-      <header className="border-border flex items-center gap-2 border-b px-4 py-3">
-        <JacqlineMark size={28} />
-        <span className="font-semibold tracking-tight">Jacqline</span>
-      </header>
-      <div className="flex-1 overflow-y-auto p-2">
+    <aside className="bg-card border-border flex w-[220px] shrink-0 flex-col rounded-2xl border">
+      <div className="flex-1 overflow-y-auto p-3">
         {loading && projects.length === 0 ? (
           <p className="text-muted-foreground p-2 text-sm">Loading…</p>
         ) : projects.length === 0 ? (
           <p className="text-muted-foreground p-2 text-sm">No projects yet.</p>
         ) : (
-          <ul className="space-y-0.5">
+          <ul className="space-y-1.5">
             {projects.map((p: Project) => (
               <li key={p.id}>
                 <button
                   type="button"
                   className={cn(
-                    "hover:bg-popover flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                    activeId === p.id && "bg-popover text-foreground",
+                    "flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition-colors",
+                    activeId === p.id
+                      ? "bg-primary/25 text-foreground"
+                      : "bg-popover/60 text-foreground/90 hover:bg-popover",
                   )}
                   onClick={() => setActive(p.id)}
                 >
-                  <Folder className="text-muted-foreground size-4 shrink-0" />
+                  <Folder
+                    className={cn(
+                      "size-3.5 shrink-0",
+                      activeId === p.id ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
                   <span className="truncate">{p.name}</span>
                 </button>
               </li>

@@ -156,14 +156,14 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <form
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             void handleSubmit(event);
           }}
         >
           <DialogHeader>
-            <DialogTitle>New project</DialogTitle>
+            <DialogTitle className="tracking-tight">New project</DialogTitle>
             <DialogDescription>
               Set the working directory and shell to spawn for this project.
             </DialogDescription>

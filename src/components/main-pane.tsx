@@ -36,7 +36,7 @@ export function MainPane() {
 
   if (project === null) {
     return (
-      <section className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+      <section className="bg-popover border-border flex min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-2xl border p-8 text-center">
         <TerminalIcon className="text-muted-foreground/40 size-12" />
         <p className="text-muted-foreground">Select a project or create a new one.</p>
       </section>
@@ -47,11 +47,11 @@ export function MainPane() {
   const lastExit: SessionExitInfo | undefined = lastExitByProject.get(project.id);
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col">
-      <header className="border-border flex items-center gap-3 border-b px-4 py-3">
+    <section className="bg-popover border-border flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border">
+      <header className="border-border/60 flex items-center gap-3 border-b px-4 py-3">
         <TerminalIcon className="text-muted-foreground size-4 shrink-0" />
         <div className="min-w-0">
-          <h2 className="truncate font-medium tracking-tight">{project.name}</h2>
+          <h2 className="truncate text-sm font-medium tracking-tight">{project.name}</h2>
           <p className="text-muted-foreground truncate font-mono text-xs">{project.cwd}</p>
         </div>
       </header>
@@ -87,7 +87,7 @@ export function MainPane() {
 
 function SpawningState() {
   return (
-    <div className="bg-popover/30 border-border absolute inset-4 flex items-center justify-center rounded-lg border border-dashed">
+    <div className="bg-card/40 border-border absolute inset-4 flex items-center justify-center rounded-lg border border-dashed">
       <p className="text-muted-foreground text-sm">Spawning session…</p>
     </div>
   );
@@ -103,7 +103,7 @@ function ExitedBanner({
   const isError: boolean = exit.code === null || exit.code !== 0;
   const codeLabel: string = exit.code === null ? " (killed)" : ` with code ${exit.code}`;
   return (
-    <div className="bg-popover/30 border-border absolute inset-4 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
+    <div className="bg-card/40 border-border absolute inset-4 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
       <p className={isError ? "text-destructive text-sm" : "text-muted-foreground text-sm"}>
         Session exited{codeLabel}.
       </p>

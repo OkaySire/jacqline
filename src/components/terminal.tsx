@@ -10,11 +10,13 @@ import { ptyResize, ptyWrite } from "@/lib/api/sessions";
 import { cn } from "@/lib/utils";
 import { useSessionsStore } from "@/stores/sessions";
 
+// Background = `--color-popover` (#181614) so the terminal blends into the
+// MainPane wrapper card; matching cursorAccent keeps the cursor cutout clean.
 const JACQLINE_THEME: ITheme = {
-  background: "#0a0a0a",
+  background: "#181614",
   foreground: "#f2f2f2",
   cursor: "#7c3aed",
-  cursorAccent: "#0a0a0a",
+  cursorAccent: "#181614",
   selectionBackground: "#2e2b29",
   selectionForeground: "#f2f2f2",
   // Standard 16-color ANSI palette tuned to read well on the warm dark bg.
@@ -47,17 +49,21 @@ interface TerminalProps {
  * resizes to the backend via `pty_resize` + a `ResizeObserver` on the host
  * element.
  *
+ * Layout: an outer wrapper carries the visual padding so the terminal "floats"
+ * inside the MainPane card; xterm itself mounts on the inner element which has
+ * no padding (FitAddon needs a clean `getBoundingClientRect()`).
+ *
  * The component **does not** kill the session on unmount — that's the
  * responsibility of the sessions store. Setting `hidden` toggles CSS
  * visibility while keeping the xterm instance (and its scrollback) alive so
  * switching between projects doesn't reset history.
  */
 export function Terminal({ sessionId, hidden = false }: TerminalProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
   const handleExit = useSessionsStore((s) => s.handleExit);
 
   useEffect(() => {
-    const host: HTMLDivElement | null = containerRef.current;
+    const host: HTMLDivElement | null = innerRef.current;
     if (host === null) {
       return;
     }
@@ -150,9 +156,10 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
 
   return (
     <div
-      ref={containerRef}
-      className={cn("h-full w-full overflow-hidden", hidden && "hidden")}
+      className={cn("h-full w-full p-3", hidden && "hidden")}
       style={{ backgroundColor: JACQLINE_THEME.background }}
-    />
+    >
+      <div ref={innerRef} className="h-full w-full overflow-hidden" />
+    </div>
   );
 }

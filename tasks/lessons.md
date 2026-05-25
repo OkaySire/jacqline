@@ -23,6 +23,7 @@ Patterns à suivre et erreurs à éviter — relire au début de chaque session 
 - **`rustfmt` peut tourner localement même sans webkit2gtk** (il ne link pas). Toujours `cd src-tauri && cargo fmt --all --check` AVANT le commit, pas seulement `cargo check`. Sinon CI rouge sur Linux+Mac avec format diff.
 - **Windows runners + `prettier --check endOfLine: "lf"`** = piège classique. `core.autocrlf=true` (défaut Windows) convertit LF→CRLF au checkout, prettier fail. **Fix** : `.gitattributes` à la racine avec `* text=auto eol=lf` + binary markers (`.png` / `.icns` / etc.). À mettre dans tout repo cross-platform dès le scaffold.
 - **`concurrency.cancel-in-progress: true`** dans le workflow : un re-push annule le run précédent sur la même ref. Pratique pour ne pas saturer la queue GH Actions.
+- **CI matrix temporairement réduite à `windows-x64` only pendant pré-V0.1** (économie minutes GH Actions + queue plus courte). Les autres entrées (`linux-x64`, `macos-x64`, `macos-arm64`) sont **commentées** dans `.github/workflows/ci.yml`, pas supprimées. **À réactiver à la sortie V0.1** — typiquement au moment de Phase 8 (release CI) une fois la stabilité Windows validée. Décommenter les 3 entries dans `matrix.include` du workflow, run un build, et on est prêts pour le release multi-OS.
 
 ## Décisions design produit (figées)
 

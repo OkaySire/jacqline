@@ -1,3 +1,8 @@
+# CI matrix temporarily reduced to **windows-x64 only** to save GH Actions
+# minutes and keep the queue short while we iterate toward V0.1. The other OS
+# entries are kept commented below — re-enable them once V0.1 is stable on
+# Windows (typically at the Phase 8 release CI). See tasks/lessons.md for
+# context.
 name: CI
 
 on:
@@ -18,18 +23,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            label: macos-arm64
-            target: aarch64-apple-darwin
-          - os: macos-13
-            label: macos-x64
-            target: x86_64-apple-darwin
+          # --- Active during pre-V0.1 ---
           - os: windows-latest
             label: windows-x64
             target: x86_64-pc-windows-msvc
-          - os: ubuntu-latest
-            label: linux-x64
-            target: x86_64-unknown-linux-gnu
+
+          # --- Reactivate when V0.1 is stable on Windows ---
+          # - os: macos-latest
+          #   label: macos-arm64
+          #   target: aarch64-apple-darwin
+          # - os: macos-13
+          #   label: macos-x64
+          #   target: x86_64-apple-darwin
+          # - os: ubuntu-latest
+          #   label: linux-x64
+          #   target: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
 

@@ -1,0 +1,103 @@
+name: Release
+
+# Triggered when a tag matching `v*` (e.g. `v0.1.0`) is pushed, or manually
+# from the Actions tab via workflow_dispatch. Builds the Tauri bundles for
+# each supported OS and uploads them to a GitHub Release (draft by default,
+# tag-name based).
+#
+# Pre-V0.1 the bundles are **unsigned** — SmartScreen / Gatekeeper warnings
+# are expected on first launch. Code signing + notarization land in V0.2.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name to publish (e.g. v0.1.0). Required when dispatched manually."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macos-arm64
+            target: aarch64-apple-darwin
+          - os: macos-13
+            label: macos-x64
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            label: windows-x64
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            label: linux-x64
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: release-${{ matrix.label }}
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            pkg-config \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build + publish to draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "Jacqline ${{ inputs.tag || github.ref_name }}"
+          releaseBody: |
+            See [CHANGELOG.md](https://github.com/OkaySire/jacqline/blob/main/CHANGELOG.md) for the full list of changes.
+
+            **Pre-V0.1 builds are unsigned.** SmartScreen (Windows) and Gatekeeper (macOS) will warn on first launch — choose _More info_ → _Run anyway_ on Windows, or right-click → _Open_ on macOS. Code signing + notarization land in V0.2.
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}

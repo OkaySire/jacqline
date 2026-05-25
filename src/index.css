@@ -110,6 +110,117 @@ body {
   background: var(--color-bg-0);
 }
 
+/* ---- App shell grid -------------------------------------------------------
+ * Phase C: outer frame = titlebar row + main grid. The `data-sb` /
+ * `data-inspector` attributes switch the column template without remounting.
+ */
+.jq-app-frame {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: var(--jq-titlebar-h) 1fr;
+  background: var(--color-bg-0);
+  overflow: hidden;
+}
+
+.jq-main {
+  display: grid;
+  grid-template-columns: var(--jq-sb-w) 1fr var(--jq-inspector-w);
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+  background: var(--color-bg-0);
+  gap: 0;
+}
+
+.jq-app-frame[data-sb="collapsed"] .jq-main {
+  grid-template-columns: var(--jq-sb-w-collapsed) 1fr var(--jq-inspector-w);
+}
+.jq-app-frame[data-inspector="hidden"] .jq-main {
+  grid-template-columns: var(--jq-sb-w) 1fr;
+}
+.jq-app-frame[data-sb="collapsed"][data-inspector="hidden"] .jq-main {
+  grid-template-columns: var(--jq-sb-w-collapsed) 1fr;
+}
+
+/* Sidebar + Inspector currently use their own Tailwind classes — they still
+ * fill their grid cell when their `w-[…px]` is removed in phases D / G. For
+ * Phase C the grid is dimensioning the columns; the panels stretch within. */
+.jq-main > aside {
+  min-width: 0;
+}
+.jq-main > section {
+  min-width: 0;
+}
+
+/* ---- Titlebar -------------------------------------------------------------
+ */
+.jq-titlebar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  height: var(--jq-titlebar-h);
+  background: var(--color-bg-0);
+  user-select: none;
+  position: relative;
+  z-index: 10;
+}
+.jq-tb-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+}
+.jq-tb-center {
+  /* Holds the drag region's center area. Interactive elements would go here
+   * if we add tabs / breadcrumbs later. */
+}
+.jq-tb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+}
+.jq-tb-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--color-fg-0);
+}
+.jq-tb-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-line-soft);
+  margin: 0 2px 0 4px;
+}
+.jq-tb-sysmenu-stub {
+  /* Placeholder for the SystemMenu popover (CPU%/mem/disk/net). Phase G. */
+  width: 0;
+  height: 1px;
+}
+.jq-tb-btn {
+  width: 44px;
+  height: var(--jq-titlebar-h);
+  display: grid;
+  place-items: center;
+  color: var(--color-fg-1);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+.jq-tb-btn:hover {
+  background: var(--color-bg-3);
+  color: var(--color-fg-0);
+}
+.jq-tb-btn.close:hover {
+  background: oklch(0.55 0.2 25);
+  color: #fff;
+}
+
 /* ---- Brand mark — CSS-only, three layers ----------------------------------
  * Geometry calibrated for size=18 (titlebar). Within 14–22px it stays sharp.
  */

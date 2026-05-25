@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the main Jacqline window. Strict allowlist: only Tauri core defaults and the directory picker. All FS, PTY, bus, shell access goes through explicit Rust commands we register and scope ourselves.",
+  "description": "Default capability for the main Jacqline window. Strict allowlist: Tauri core defaults, the directory picker, and the window controls needed by our custom TitleBar (decorations: false). All FS, PTY, bus, shell access goes through explicit Rust commands we register and scope ourselves.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "dialog:allow-open"
+  ]
 }

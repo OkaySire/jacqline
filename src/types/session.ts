@@ -1,8 +1,14 @@
+export type SessionStatus = "running" | "idle" | "stopped";
+
 export interface SessionMeta {
   readonly id: string;
   readonly projectId: string;
+  readonly name: string;
+  readonly claudeId: string;
+  readonly status: SessionStatus;
   readonly pid: number;
   readonly startedAt: number;
+  readonly endedAt: number | null;
 }
 
 /**

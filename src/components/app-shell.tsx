@@ -1,8 +1,8 @@
 import { CustomizeWindow } from "@/components/customize-window";
+import { Inspector } from "@/components/inspector";
 import { MainPane } from "@/components/main-pane";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ProjectConfigWindow } from "@/components/project-config-window";
-import { RightPanel } from "@/components/right-panel";
 import { SessionDialog } from "@/components/session-dialog";
 import { Sidebar } from "@/components/sidebar";
 import { TitleBar } from "@/components/title-bar";
@@ -46,7 +46,7 @@ export function AppShell() {
             onOpenProjectConfig={openProjectConfig}
           />
           <MainPane />
-          {!inspectorHidden && <RightPanel />}
+          {!inspectorHidden && <Inspector />}
         </div>
       </div>
       <NewProjectDialog />

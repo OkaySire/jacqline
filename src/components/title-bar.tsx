@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { I } from "@/components/icons";
 import { JacqlineMark } from "@/components/jacqline-mark";
+import { SystemMenu } from "@/components/system-menu";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -56,8 +57,7 @@ export function TitleBar() {
       </div>
       <div className="jq-tb-center" />
       <div className="jq-tb-right">
-        {/* SystemMenu placeholder — real CPU/mem/disk/net gauges land in Phase G. */}
-        <div className="jq-tb-sysmenu-stub" aria-hidden />
+        <SystemMenu />
         <div className="jq-tb-divider" />
         <button type="button" className="jq-tb-btn" onClick={onMinimize} title="Minimize">
           <I.min />

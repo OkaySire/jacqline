@@ -35,7 +35,8 @@ Leçons : `tasks/lessons.md`.
 - [ ] Layout 3-pane (sidebar + main + right)
 - [ ] Sidebar : liste projets + kebab menu
 - [ ] Dialog "New project" (name, cwd file picker, shell dropdown)
-- [ ] Brand init (Geist embedded + variation warm vs zinc — **décision orchestrator**)
+- [ ] Brand init : Geist embedded + appliquer palette warm (`#0a0a0a` / `#1f1d1c` / `#181614` / `#7c3aed`)
+- [ ] App icon : générer mark purple Jacqline → `src-tauri/icons/*.{ico,icns,png}` + référencer dans `tauri.conf.json`
 - [ ] Empty state
 
 ## Phase 3 — Shell detection
@@ -49,6 +50,7 @@ Leçons : `tasks/lessons.md`.
 - [ ] Commands `session_create` / `pty_write` / `pty_resize` / `session_kill` / `session_list`
 - [ ] Events `pty:data:*` + `pty:exit:*`
 - [ ] Component `<Terminal sessionId=...>` avec FitAddon
+- [ ] **Auto-spawn** : `session_create` déclenché automatiquement à l'activation d'un projet sans session live
 
 ## Phase 5 — File browser
 
@@ -77,11 +79,11 @@ Leçons : `tasks/lessons.md`.
 - [ ] CHANGELOG initial
 - [ ] README sections Install / Build / Contributing détaillées
 
-## Décisions de design en attente (orchestrator)
+## Décisions de design (✅ tranchées 2026-05-25)
 
-- [ ] **Brand variation** : warm (`#0a0a0a`, `#1f1d1c`) ou zinc strict JacqCloud ? — Phase 2 baseline = warm placeholder dans `src/index.css`, à confirmer
-- [ ] **Icon app** : nouveau mark Jacqline ou wordmark JacqCloud ?
-- [ ] **First terminal** : auto-spawn au switch projet ou bouton "Start session" explicite ?
+- [x] **Brand** : warm sombre du mockup standalone — `#0a0a0a` bg, `#1f1d1c` surface, `#181614` panel deep, accent purple `#7c3aed`. Appliquer à `src/index.css @theme` quand on attaque Phase 2.
+- [x] **Icon app** : nouveau mark Jacqline — carré purple `#7c3aed` 48px radius 12px + check blanc à l'intérieur (cf SVG inline `docs/mockup.html`). À décliner en `.ico` (Win), `.icns` (Mac), PNG multi-size (Linux) dans `src-tauri/icons/` + référencer dans `tauri.conf.json` `bundle.icon`. Possible delegation à `redesign`.
+- [x] **First terminal** : auto-spawn au switch projet (style VSCode workspace). En Phase 4, déclencher `session_create` automatiquement à l'activation d'un projet sans session live.
 
 ## Setup machine restant (dev local seulement)
 

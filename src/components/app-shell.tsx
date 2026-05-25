@@ -1,13 +1,14 @@
-import { useState } from "react";
-
+import { AboutDialog } from "@/components/about-dialog";
 import { JacqlineMark } from "@/components/jacqline-mark";
 import { MainPane } from "@/components/main-pane";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ProjectsSidebar } from "@/components/projects-sidebar";
 import { RightPanel } from "@/components/right-panel";
+import { SettingsDialog } from "@/components/settings-dialog";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 export function AppShell() {
-  const [newProjectOpen, setNewProjectOpen] = useState<boolean>(false);
+  useKeyboardShortcuts();
 
   return (
     <>
@@ -17,12 +18,14 @@ export function AppShell() {
           <span className="text-base font-semibold tracking-tight">Jacqline</span>
         </header>
         <div className="flex min-h-0 flex-1 gap-3 pb-6 pl-6">
-          <ProjectsSidebar onNewProject={() => setNewProjectOpen(true)} />
+          <ProjectsSidebar />
           <MainPane />
           <RightPanel />
         </div>
       </div>
-      <NewProjectDialog open={newProjectOpen} onOpenChange={setNewProjectOpen} />
+      <NewProjectDialog />
+      <SettingsDialog />
+      <AboutDialog />
     </>
   );
 }

@@ -9,6 +9,7 @@ import "@xterm/xterm/css/xterm.css";
 import { ptyResize, ptyWrite } from "@/lib/api/sessions";
 import { cn } from "@/lib/utils";
 import { useSessionsStore } from "@/stores/sessions";
+import { useSettingsStore } from "@/stores/settings";
 
 // Background = `--color-popover` (#181614) so the terminal blends into the
 // MainPane wrapper card; matching cursorAccent keeps the cursor cutout clean.
@@ -61,6 +62,11 @@ interface TerminalProps {
 export function Terminal({ sessionId, hidden = false }: TerminalProps) {
   const innerRef = useRef<HTMLDivElement | null>(null);
   const handleExit = useSessionsStore((s) => s.handleExit);
+  // Font settings are captured on mount only; users will see changes on the
+  // next session start. Re-creating xterm to apply a font live would reset
+  // scrollback, which is more disruptive than waiting for the next spawn.
+  const fontFamily: string = useSettingsStore.getState().fontFamily;
+  const fontSize: number = useSettingsStore.getState().fontSize;
 
   useEffect(() => {
     const host: HTMLDivElement | null = innerRef.current;
@@ -70,8 +76,8 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
 
     const term = new XTermTerminal({
       theme: JACQLINE_THEME,
-      fontFamily: '"Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 13,
+      fontFamily,
+      fontSize,
       lineHeight: 1.25,
       cursorBlink: true,
       cursorStyle: "block",
@@ -152,7 +158,7 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
       }
       term.dispose();
     };
-  }, [sessionId, handleExit]);
+  }, [sessionId, handleExit, fontFamily, fontSize]);
 
   return (
     <div

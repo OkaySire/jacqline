@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { detectShells, type ShellOption } from "@/lib/api/shells";
 import { useProjectsStore } from "@/stores/projects";
+import { useUiStore } from "@/stores/ui";
 
 /**
  * If the Rust `detect_shells` command fails or returns nothing, we still want
@@ -38,12 +39,9 @@ const FALLBACK_SHELLS: readonly ShellOption[] = [
   { label: "WSL: Debian", shellKind: "wsl", shellValue: "Debian" },
 ];
 
-interface NewProjectDialogProps {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}
-
-export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialogProps) {
+export function NewProjectDialog() {
+  const isOpen: boolean = useUiStore((s) => s.newProjectDialogOpen);
+  const closeDialog: () => void = useUiStore((s) => s.closeNewProject);
   const [name, setName] = useState<string>("");
   const [cwd, setCwd] = useState<string>("");
   const [shellIndex, setShellIndex] = useState<string>("0");
@@ -139,7 +137,7 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
         shellValue: shell.shellValue,
       });
       reset();
-      onOpenChange(false);
+      closeDialog();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -150,8 +148,8 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
   function handleOpenChange(next: boolean): void {
     if (!next) {
       reset();
+      closeDialog();
     }
-    onOpenChange(next);
   }
 
   return (
@@ -225,7 +223,7 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
             {error !== null && <p className="text-destructive text-sm">{error}</p>}
           </div>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="ghost" onClick={closeDialog}>
               Cancel
             </Button>
             <Button type="submit" disabled={submitting || shellsLoading}>

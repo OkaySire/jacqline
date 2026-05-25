@@ -1,19 +1,19 @@
-import { Folder, Plus } from "lucide-react";
+import { Folder, Info, Plus, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useProjectsStore } from "@/stores/projects";
+import { useUiStore } from "@/stores/ui";
 import type { Project } from "@/types/project";
 
-interface ProjectsSidebarProps {
-  readonly onNewProject: () => void;
-}
-
-export function ProjectsSidebar({ onNewProject }: ProjectsSidebarProps) {
+export function ProjectsSidebar() {
   const projects: readonly Project[] = useProjectsStore((s) => s.projects);
   const activeId: string | null = useProjectsStore((s) => s.activeProjectId);
   const setActive: (id: string | null) => void = useProjectsStore((s) => s.setActive);
   const loading: boolean = useProjectsStore((s) => s.loading);
+  const openNewProject = useUiStore((s) => s.openNewProject);
+  const openSettings = useUiStore((s) => s.openSettings);
+  const openAbout = useUiStore((s) => s.openAbout);
 
   return (
     <aside className="bg-card border-border flex w-[220px] shrink-0 flex-col rounded-2xl border">
@@ -24,7 +24,7 @@ export function ProjectsSidebar({ onNewProject }: ProjectsSidebarProps) {
           <p className="text-muted-foreground p-2 text-sm">No projects yet.</p>
         ) : (
           <ul className="space-y-1.5">
-            {projects.map((p: Project) => (
+            {projects.map((p: Project, idx: number) => (
               <li key={p.id}>
                 <button
                   type="button"
@@ -35,6 +35,7 @@ export function ProjectsSidebar({ onNewProject }: ProjectsSidebarProps) {
                       : "bg-popover/60 text-foreground/90 hover:bg-popover",
                   )}
                   onClick={() => setActive(p.id)}
+                  title={idx < 9 ? `Cmd/Ctrl+${idx + 1}` : undefined}
                 >
                   <Folder
                     className={cn(
@@ -49,11 +50,33 @@ export function ProjectsSidebar({ onNewProject }: ProjectsSidebarProps) {
           </ul>
         )}
       </div>
-      <div className="border-border border-t p-3">
-        <Button onClick={onNewProject} className="w-full">
+      <div className="border-border space-y-2 border-t p-3">
+        <Button onClick={openNewProject} className="w-full" title="Cmd/Ctrl+N">
           <Plus className="size-4" />
           New project
         </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={openSettings}
+            className="flex-1 justify-start"
+          >
+            <Settings className="size-3.5" />
+            Settings
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={openAbout}
+            className="flex-1 justify-start"
+          >
+            <Info className="size-3.5" />
+            About
+          </Button>
+        </div>
       </div>
     </aside>
   );

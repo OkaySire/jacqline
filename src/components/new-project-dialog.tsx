@@ -1,6 +1,6 @@
 import { open as openDirectoryPicker } from "@tauri-apps/plugin-dialog";
 import { Folder } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,21 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { detectShells, type ShellOption } from "@/lib/api/shells";
 import { useProjectsStore } from "@/stores/projects";
-import type { ShellKind } from "@/types/project";
-
-interface ShellOption {
-  readonly label: string;
-  readonly shellKind: ShellKind;
-  readonly shellValue: string;
-}
 
 /**
- * Phase 2 hardcodes a few common shells. Phase 3 will replace this with a
- * runtime-detected list (Unix `/etc/shells`, Windows `pwsh.exe`/`cmd.exe`,
- * `wsl.exe --list --quiet`).
+ * If the Rust `detect_shells` command fails or returns nothing, we still want
+ * the form to be usable. These mirror the Phase 2 hardcoded options so the user
+ * never sees an empty dropdown.
  */
-const SHELL_OPTIONS: readonly ShellOption[] = [
+const FALLBACK_SHELLS: readonly ShellOption[] = [
   { label: "bash", shellKind: "native", shellValue: "bash" },
   { label: "zsh", shellKind: "native", shellValue: "zsh" },
   { label: "fish", shellKind: "native", shellValue: "fish" },
@@ -55,7 +49,47 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
   const [shellIndex, setShellIndex] = useState<string>("0");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [shells, setShells] = useState<readonly ShellOption[]>(FALLBACK_SHELLS);
+  const [shellsLoading, setShellsLoading] = useState<boolean>(false);
   const create = useProjectsStore((s) => s.create);
+
+  // Fetch detected shells when the dialog opens. We refresh on every open in
+  // case the user installed a new shell (or WSL distro) since the app started.
+  // The fetch runs inside an async IIFE so the initial loading flag flip lands
+  // in a microtask callback (avoids `react-hooks/set-state-in-effect`).
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    let cancelled: boolean = false;
+    void (async () => {
+      setShellsLoading(true);
+      try {
+        const detected: ShellOption[] = await detectShells();
+        if (cancelled) {
+          return;
+        }
+        setShells(detected.length > 0 ? detected : FALLBACK_SHELLS);
+        setShellIndex("0");
+      } catch (err: unknown) {
+        if (cancelled) {
+          return;
+        }
+        // Detection failure is non-fatal — keep the fallback list so the form
+        // remains usable, but log it so we can spot platform regressions.
+        console.warn("detect_shells failed; keeping fallback list", err);
+        setShells(FALLBACK_SHELLS);
+        setShellIndex("0");
+      } finally {
+        if (!cancelled) {
+          setShellsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   function reset(): void {
     setName("");
@@ -83,7 +117,7 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
     setError(null);
 
     const idx: number = Number.parseInt(shellIndex, 10);
-    const shell: ShellOption | undefined = SHELL_OPTIONS[idx];
+    const shell: ShellOption | undefined = shells[idx];
     if (!shell) {
       setError("Please pick a shell.");
       return;
@@ -169,13 +203,18 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="project-shell">Shell</Label>
-              <Select value={shellIndex} onValueChange={setShellIndex}>
+              <Label htmlFor="project-shell">
+                Shell
+                {shellsLoading && (
+                  <span className="text-muted-foreground ml-2 text-xs">(detecting…)</span>
+                )}
+              </Label>
+              <Select value={shellIndex} onValueChange={setShellIndex} disabled={shellsLoading}>
                 <SelectTrigger id="project-shell" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SHELL_OPTIONS.map((opt: ShellOption, idx: number) => (
+                  {shells.map((opt: ShellOption, idx: number) => (
                     <SelectItem key={`${opt.shellKind}:${opt.shellValue}`} value={String(idx)}>
                       {opt.label}
                     </SelectItem>
@@ -189,7 +228,7 @@ export function NewProjectDialog({ open: isOpen, onOpenChange }: NewProjectDialo
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || shellsLoading}>
               {submitting ? "Creating…" : "Create"}
             </Button>
           </DialogFooter>

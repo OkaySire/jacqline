@@ -2,6 +2,7 @@ mod db;
 mod error;
 mod project;
 mod setting;
+mod shell;
 
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
@@ -35,6 +36,7 @@ pub fn run() {
             project::project_delete,
             setting::setting_get,
             setting::setting_set,
+            shell::detect_shells,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

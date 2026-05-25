@@ -18,6 +18,12 @@ Patterns à suivre et erreurs à éviter — relire au début de chaque session 
 - **Cross-platform** : jamais de code Linux-only ou Win-only sans abstraction. Tester en CI mac+win+linux dès le scaffold.
 - **One concern par file** : modules Rust petits et focalisés, composants React idem.
 
+## Décisions design produit (figées)
+
+- **Brand** = warm sombre (mockup standalone). Palette `#0a0a0a` / `#1f1d1c` / `#181614` / accent purple `#7c3aed`. Pas zinc JacqCloud strict.
+- **Icon** = nouveau mark Jacqline (carré purple `#7c3aed` 48px radius 12px + check blanc). Pas wordmark JacqCloud.
+- **Terminal** = auto-spawn au switch projet (style VSCode workspace). Pas de bouton "Start session" explicite.
+
 ## Workflow agent
 
 - **Toujours** : `get_context()` + lire `tasks/lessons.md` (ce fichier) + `tasks/todo.md` au démarrage. Pas besoin de poller — les messages bus arrivent via `<channel>`.

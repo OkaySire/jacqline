@@ -1,3 +1,9 @@
+mod db;
+mod error;
+mod project;
+mod setting;
+
+use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,7 +19,23 @@ pub fn run() {
     tracing::info!("Jacqline starting");
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![])
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            let db_path = data_dir.join("jacqline.db");
+            let db_state = db::DbState::new(&db_path)?;
+            app.manage(db_state);
+            tracing::info!(path = %db_path.display(), "db initialized");
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            project::project_list,
+            project::project_create,
+            project::project_update,
+            project::project_delete,
+            setting::setting_get,
+            setting::setting_set,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

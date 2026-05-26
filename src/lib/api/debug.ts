@@ -31,6 +31,7 @@ export interface DebugSnapshot {
   readonly appVersion: string;
   readonly timestampMs: number;
   readonly appDataDir: string;
+  readonly logDir: string;
   readonly logPath: string;
   readonly os: OsInfo;
   readonly wslDistros: readonly string[];

@@ -163,16 +163,8 @@ function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
         </Section>
       )}
       <Section title="Updater">
-        <KV
-          label="Last seen published_at"
-          value={
-            snap.updater.lastSeenPublishedAtMs !== null
-              ? new Date(snap.updater.lastSeenPublishedAtMs).toISOString()
-              : "(never)"
-          }
-          mono
-          small
-        />
+        <KV label="Current SHA" value={snap.updater.currentSha} mono small />
+        <KV label="Last installed SHA" value={snap.updater.lastSeenSha ?? "(never)"} mono small />
       </Section>
       <Section title="PATH preview (redacted)">
         <pre className="text-fg-2 max-h-32 overflow-auto font-mono text-[10.5px] whitespace-pre-wrap">
@@ -274,9 +266,8 @@ function formatMarkdown(snap: DebugSnapshot): string {
   }
   lines.push("");
   lines.push("## Updater");
-  lines.push(
-    `- Last seen published_at: ${snap.updater.lastSeenPublishedAtMs !== null ? new Date(snap.updater.lastSeenPublishedAtMs).toISOString() : "(never)"}`,
-  );
+  lines.push(`- Current SHA: \`${snap.updater.currentSha}\``);
+  lines.push(`- Last installed SHA: \`${snap.updater.lastSeenSha ?? "(never)"}\``);
   lines.push("");
   lines.push("## PATH preview (redacted)");
   lines.push("```");

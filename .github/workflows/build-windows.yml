@@ -101,12 +101,16 @@ jobs:
           The in-app updater (Settings → System menu → Check for updates) polls this release and offers one-click installs.
           "@
 
-          # Idempotent: create the release the first time, refresh notes after.
-          gh release view $tag --json tagName 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "Jacqline nightly" --notes "$body" --prerelease --target ${{ github.sha }}
-          } else {
-            gh release edit $tag --notes "$body" --prerelease --target ${{ github.sha }}
-          }
-
-          gh release upload $tag "$($msi.FullName)" "$sidecar" --clobber
+          # The in-app updater compares the release's `target_commitish`
+          # (full commit SHA) against the running binary's build SHA. GitHub
+          # freezes `published_at` at the release's initial creation and does
+          # NOT refresh it on `gh release edit`, so editing the existing
+          # release would never advertise a new SHA. Delete + recreate
+          # gives us a fresh `target_commitish` every time.
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          gh release create $tag `
+            --title "Jacqline nightly ($shortSha)" `
+            --notes "$body" `
+            --prerelease `
+            --target ${{ github.sha }} `
+            "$($msi.FullName)" "$sidecar"

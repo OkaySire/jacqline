@@ -24,7 +24,8 @@ export interface RecentExit {
 }
 
 export interface UpdaterState {
-  readonly lastSeenPublishedAtMs: number | null;
+  readonly currentSha: string;
+  readonly lastSeenSha: string | null;
 }
 
 export interface DebugSnapshot {

@@ -113,20 +113,33 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
     let unlistenExit: UnlistenFn | null = null;
     let disposed: boolean = false;
 
+    const sessionTag: string = sessionId.slice(0, 8);
+    console.log(`[pty ${sessionTag}] terminal mount, registering listeners`);
     void (async () => {
       const dataUnsubPromise: Promise<UnlistenFn> = listen<number[]>(
         `pty:data:${sessionId}`,
         (event) => {
+          // Bytes count + 40-char ASCII preview help triage in DevTools when
+          // the terminal stays visually empty even though Rust says it
+          // emitted chunks.
+          const len: number = event.payload.length;
+          const preview: string = event.payload
+            .slice(0, 40)
+            .map((b: number): string => (b >= 32 && b < 127 ? String.fromCharCode(b) : "."))
+            .join("");
+          console.log(`[pty ${sessionTag}] data ${String(len)}B`, preview);
           term.write(new Uint8Array(event.payload));
         },
       );
       const exitUnsubPromise: Promise<UnlistenFn> = listen<{ code: number | null }>(
         `pty:exit:${sessionId}`,
         (event) => {
+          console.log(`[pty ${sessionTag}] exit`, event.payload);
           handleExit(sessionId, event.payload.code);
         },
       );
       const [dataUnsub, exitUnsub] = await Promise.all([dataUnsubPromise, exitUnsubPromise]);
+      console.log(`[pty ${sessionTag}] listeners registered`);
       if (disposed) {
         dataUnsub();
         exitUnsub();

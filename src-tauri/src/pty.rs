@@ -273,6 +273,13 @@ fn spawn_pty_tasks(
 
     // Reader: blocking I/O on a blocking-tokio thread; each chunk emitted as
     // a `pty:data:<id>` event.
+    //
+    // The user-visible symptom we are chasing: child PID is alive, no exit
+    // event, but the frontend terminal stays blank. That can mean (a) the
+    // read() call never returns, (b) Tauri's emit() fails silently, or
+    // (c) the event fires before the frontend's listener registers (race).
+    // We log task start, every chunk (with a small preview), EOF, errors,
+    // and emit failures, so the rolling log has a complete sequence.
     {
         let data_event: String = format!("pty:data:{session_id}");
         let app_handle: AppHandle = app.clone();
@@ -280,18 +287,55 @@ fn spawn_pty_tasks(
         tokio::task::spawn_blocking(move || {
             let mut reader = reader;
             let mut buf: Vec<u8> = vec![0u8; READ_BUFFER_BYTES];
+            let mut total: usize = 0;
+            let mut chunks: usize = 0;
+            tracing::info!(session = %session_id_log, "pty reader task started");
             loop {
                 match reader.read(&mut buf) {
-                    Ok(0) => break,
+                    Ok(0) => {
+                        tracing::info!(
+                            session = %session_id_log,
+                            total_bytes = total,
+                            chunks,
+                            "pty reader EOF",
+                        );
+                        break;
+                    }
                     Ok(n) => {
+                        total += n;
+                        chunks += 1;
+                        // First-bytes preview helps spot e.g. "command not
+                        // found" output that would otherwise look like a
+                        // healthy data stream until the user squints at
+                        // the terminal.
+                        let preview: String =
+                            String::from_utf8_lossy(&buf[..n.min(40)]).to_string();
+                        tracing::debug!(
+                            session = %session_id_log,
+                            bytes = n,
+                            total_bytes = total,
+                            chunks,
+                            preview = %preview,
+                            "pty read chunk",
+                        );
                         let chunk: Vec<u8> = buf[..n].to_vec();
                         if let Err(err) = app_handle.emit(&data_event, chunk) {
-                            tracing::warn!(%err, "pty data emit failed");
+                            tracing::warn!(
+                                %err,
+                                session = %session_id_log,
+                                "pty data emit failed",
+                            );
                             break;
                         }
                     }
                     Err(err) => {
-                        tracing::debug!(%err, session = %session_id_log, "pty read ended");
+                        tracing::warn!(
+                            %err,
+                            session = %session_id_log,
+                            total_bytes = total,
+                            chunks,
+                            "pty reader errored",
+                        );
                         break;
                     }
                 }

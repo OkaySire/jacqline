@@ -26,10 +26,15 @@ function fromRaw(raw: RawSessionMeta): SessionMeta {
   };
 }
 
-export async function sessionCreate(projectId: string, name?: string): Promise<SessionMeta> {
+export async function sessionCreate(
+  projectId: string,
+  name?: string,
+  withClaude?: boolean,
+): Promise<SessionMeta> {
   const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_create", {
     projectId,
     name: name ?? null,
+    withClaude: withClaude ?? null,
   });
   return fromRaw(raw);
 }
@@ -52,8 +57,14 @@ export async function sessionKill(sessionId: string): Promise<void> {
   await invoke<void>("session_kill", { sessionId });
 }
 
-export async function sessionRestart(sessionId: string): Promise<SessionMeta> {
-  const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_restart", { sessionId });
+export async function sessionRestart(
+  sessionId: string,
+  withClaude?: boolean,
+): Promise<SessionMeta> {
+  const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_restart", {
+    sessionId,
+    withClaude: withClaude ?? null,
+  });
   return fromRaw(raw);
 }
 

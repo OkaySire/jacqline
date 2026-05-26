@@ -14,6 +14,8 @@ export function MainPane() {
   const sessionsByProject = useSessionsStore((s) => s.sessionsByProject);
   const lastExitByProject = useSessionsStore((s) => s.lastExitByProject);
   const ensureSession = useSessionsStore((s) => s.ensureSession);
+  const createSession = useSessionsStore((s) => s.createSession);
+  const restartSession = useSessionsStore((s) => s.restartSession);
   const loadProjectSessions = useSessionsStore((s) => s.loadProjectSessions);
   const clearExit = useSessionsStore((s) => s.clearExit);
   const activeSession: SessionMeta | null = useActiveSession(project?.id ?? null);
@@ -86,8 +88,29 @@ export function MainPane() {
             exit={lastExit}
             onRestart={() => {
               clearExit(project.id);
-              void ensureSession(project.id).catch((err: unknown) => {
-                console.error("ensureSession failed", err);
+              // Restart the failed session if we know which one it was, so
+              // the user keeps the same name + id. Falls back to
+              // ensureSession when the lastExit entry has been cleared
+              // already (rare race).
+              void restartSession(lastExit.sessionId).catch((err: unknown) => {
+                console.error("restartSession failed", err);
+                void ensureSession(project.id).catch((err2: unknown) => {
+                  console.error("ensureSession failed", err2);
+                });
+              });
+            }}
+            onOpenShell={() => {
+              clearExit(project.id);
+              // Re-spawn the same row but skip the `claude` invocation —
+              // gives the user a plain shell so they can debug why
+              // `claude` isn't on the PATH.
+              void restartSession(lastExit.sessionId, false).catch((err: unknown) => {
+                console.error("restartSession (shell) failed", err);
+                // If the restart fails (e.g. row was deleted), fall back
+                // to a fresh shell-only session under a new id.
+                void createSession(project.id, "shell", false).catch((err2: unknown) => {
+                  console.error("createSession (shell fallback) failed", err2);
+                });
               });
             }}
           />
@@ -109,9 +132,11 @@ function SpawningState() {
 function ExitedBanner({
   exit,
   onRestart,
+  onOpenShell,
 }: {
   readonly exit: SessionExitInfo;
   readonly onRestart: () => void;
+  readonly onOpenShell: () => void;
 }) {
   const isError: boolean = exit.code === null || exit.code !== 0;
   const codeLabel: string = exit.code === null ? " (killed)" : ` with code ${exit.code}`;
@@ -122,11 +147,19 @@ function ExitedBanner({
       </p>
       {isError && (
         <p className="text-fg-3 max-w-md text-xs">
-          If you didn't see <code className="font-mono">claude</code> start, make sure the provider
-          command is on your PATH and try again.
+          The most common cause is <code className="font-mono">claude</code> not being on the
+          shell's PATH (login shells don't always source <code className="font-mono">.bashrc</code>
+          ). Restart to retry, or open a plain shell to debug.
         </p>
       )}
-      <Button onClick={onRestart}>Restart session</Button>
+      <div className="flex items-center gap-2">
+        <Button onClick={onRestart}>Restart session</Button>
+        {isError && (
+          <Button variant="ghost" onClick={onOpenShell}>
+            Open shell instead
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

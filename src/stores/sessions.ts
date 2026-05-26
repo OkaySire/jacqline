@@ -33,17 +33,27 @@ interface SessionsState {
    */
   readonly ensureSession: (projectId: string) => Promise<SessionMeta>;
 
-  /** Spawn a new session in the project, always. */
-  readonly createSession: (projectId: string, name?: string) => Promise<SessionMeta>;
+  /**
+   * Spawn a new session in the project, always. `withClaude=false` spawns
+   * the project's shell without running `claude` inside — useful as a
+   * fallback when `claude` isn't installed / on the PATH.
+   */
+  readonly createSession: (
+    projectId: string,
+    name?: string,
+    withClaude?: boolean,
+  ) => Promise<SessionMeta>;
 
   /** Kill a specific session. The backend marks it `stopped` in SQL. */
   readonly killSession: (sessionId: string) => Promise<void>;
 
   /**
    * Restart a stopped session — re-spawns its PTY under the same id, marks
-   * it `running` again. Backend rejects if it's already running.
+   * it `running` again. `withClaude=false` skips running `claude` inside
+   * the shell (shell-only fallback). Backend rejects if it's already
+   * running.
    */
-  readonly restartSession: (sessionId: string) => Promise<SessionMeta>;
+  readonly restartSession: (sessionId: string, withClaude?: boolean) => Promise<SessionMeta>;
 
   /** Permanently remove a session — drops the PTY if any, deletes the row. */
   readonly deleteSession: (sessionId: string) => Promise<void>;
@@ -162,14 +172,21 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     return promise;
   },
 
-  createSession: async (projectId: string, name?: string): Promise<SessionMeta> => {
-    const meta: SessionMeta = await sessionCreate(projectId, name);
+  createSession: async (
+    projectId: string,
+    name?: string,
+    withClaude?: boolean,
+  ): Promise<SessionMeta> => {
+    const meta: SessionMeta = await sessionCreate(projectId, name, withClaude);
     set((s: SessionsState) => {
       const nextActive: Map<string, string> = new Map(s.activeSessionByProject);
       nextActive.set(projectId, meta.id);
+      const nextExits: Map<string, SessionExitInfo> = new Map(s.lastExitByProject);
+      nextExits.delete(projectId);
       return {
         sessionsByProject: withSessionUpdated(s.sessionsByProject, meta),
         activeSessionByProject: nextActive,
+        lastExitByProject: nextExits,
       };
     });
     return meta;
@@ -182,8 +199,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     // list as `stopped`.
   },
 
-  restartSession: async (sessionId: string): Promise<SessionMeta> => {
-    const meta: SessionMeta = await sessionRestart(sessionId);
+  restartSession: async (sessionId: string, withClaude?: boolean): Promise<SessionMeta> => {
+    const meta: SessionMeta = await sessionRestart(sessionId, withClaude);
     set((state: SessionsState) => {
       const nextSessions: Map<string, readonly SessionMeta[]> = new Map(state.sessionsByProject);
       const current: readonly SessionMeta[] = nextSessions.get(meta.projectId) ?? [];

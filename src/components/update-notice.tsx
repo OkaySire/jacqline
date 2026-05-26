@@ -1,5 +1,5 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   updaterCheck,
@@ -12,6 +12,15 @@ import {
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "error";
+
+const CHECK_INTERVAL_MS: number = 10 * 60 * 1000;
+
+/**
+ * Custom event dispatched by the System menu's "Check for updates" entry
+ * (and any future manual trigger). `<UpdateNotice>` subscribes to it so
+ * the manual trigger reuses the same code path as the periodic check.
+ */
+export const UPDATE_CHECK_EVENT: string = "jacqline:check-for-updates";
 
 /**
  * Compact update notice that lives in the titlebar between the SystemMenu
@@ -51,38 +60,74 @@ export function UpdateNotice() {
     };
   }, []);
 
-  // One auto-check on mount. Failures stay silent (offline, no nightly yet).
-  // Frontend console.log is intentional — when the updater "didn't run", the
-  // first question is whether this effect even fired. The lines surface in
-  // the DevTools console (Ctrl+Shift+I) and in any external log capture.
+  // Re-check fires from three sources (mount / 10 min interval / window
+  // focus / System menu's "Check for updates"). We keep the latest phase
+  // in a ref so the check logic — which is itself stable — can short-
+  // circuit when it would clobber an in-flight download or a ready-to-
+  // install state.
+  const phaseRef = useRef<Phase>(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  const doCheck = useCallback(async (): Promise<void> => {
+    const current: Phase = phaseRef.current;
+    if (
+      current === "checking" ||
+      current === "downloading" ||
+      current === "ready" ||
+      current === "installing"
+    ) {
+      return;
+    }
+    setPhase("checking");
+    try {
+      const next: UpdateInfo = await updaterCheck();
+      console.log("[update-notice] updater_check result", next);
+      if (next.isNewer) {
+        setInfo(next);
+        setPhase("available");
+      } else {
+        setInfo(null);
+        setPhase("idle");
+      }
+    } catch (err: unknown) {
+      console.error("[update-notice] updater_check failed", err);
+      setPhase("idle");
+    }
+  }, []);
+
+  // Wire up the four triggers: mount, 10 min interval, window focus, and
+  // the System menu's manual button (CustomEvent on `window`).
   useEffect(() => {
     console.log("[update-notice] mount, calling updater_check");
-    let cancelled: boolean = false;
-    void (async () => {
-      setPhase("checking");
-      try {
-        const next: UpdateInfo = await updaterCheck();
-        console.log("[update-notice] updater_check result", next);
-        if (cancelled) {
-          return;
-        }
-        if (next.isNewer) {
-          setInfo(next);
-          setPhase("available");
-        } else {
-          setPhase("idle");
-        }
-      } catch (err: unknown) {
-        console.error("[update-notice] updater_check failed", err);
-        if (!cancelled) {
-          setPhase("idle");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
+    // Defer the initial call by one tick so the setState inside doCheck
+    // doesn't fire synchronously inside this effect body — would otherwise
+    // trip react-hooks/set-state-in-effect.
+    const initialId: number = window.setTimeout(() => {
+      void doCheck();
+    }, 0);
+
+    const intervalId: number = window.setInterval(() => {
+      void doCheck();
+    }, CHECK_INTERVAL_MS);
+
+    const onFocus = (): void => {
+      void doCheck();
     };
-  }, []);
+    const onManualCheck = (): void => {
+      void doCheck();
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener(UPDATE_CHECK_EVENT, onManualCheck);
+
+    return () => {
+      window.clearTimeout(initialId);
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener(UPDATE_CHECK_EVENT, onManualCheck);
+    };
+  }, [doCheck]);
 
   const startDownload = useCallback(async (): Promise<void> => {
     if (info === null) {

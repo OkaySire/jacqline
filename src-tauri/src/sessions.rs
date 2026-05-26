@@ -112,6 +112,44 @@ pub(crate) fn mark_stopped(conn: &Connection, id: &str, ended_at: i64) -> AppRes
     Ok(())
 }
 
+/// Flip a stopped session back to running with a fresh pid + start timestamp.
+/// Used by `pty::session_restart`.
+pub(crate) fn mark_running(
+    conn: &Connection,
+    id: &str,
+    pid: u32,
+    started_at: i64,
+) -> AppResult<()> {
+    let affected: usize = conn.execute(
+        "UPDATE sessions SET status = 'running', pid = ?1, started_at = ?2, ended_at = NULL WHERE id = ?3",
+        params![i64::from(pid), started_at, id],
+    )?;
+    if affected == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
+}
+
+/// Delete a session row. Returns `true` when the row existed.
+pub(crate) fn delete(conn: &Connection, id: &str) -> AppResult<bool> {
+    let affected: usize = conn.execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+    Ok(affected > 0)
+}
+
+/// Fetch a single session by id.
+pub(crate) fn get_by_id(conn: &Connection, id: &str) -> AppResult<SessionMeta> {
+    conn.query_row(
+        "SELECT id, project_id, name, claude_id, status, pid, started_at, ended_at \
+         FROM sessions WHERE id = ?1",
+        [id],
+        row_to_session,
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound,
+        other => AppError::from(other),
+    })
+}
+
 /// Provide users with a default-name builder: `main`, then `main 2`, `main 3`, …
 pub(crate) fn next_default_name(conn: &Connection, project_id: &str) -> AppResult<String> {
     let count: i64 = conn.query_row(

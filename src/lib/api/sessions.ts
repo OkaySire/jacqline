@@ -52,6 +52,15 @@ export async function sessionKill(sessionId: string): Promise<void> {
   await invoke<void>("session_kill", { sessionId });
 }
 
+export async function sessionRestart(sessionId: string): Promise<SessionMeta> {
+  const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_restart", { sessionId });
+  return fromRaw(raw);
+}
+
+export async function sessionDelete(sessionId: string): Promise<void> {
+  await invoke<void>("session_delete", { sessionId });
+}
+
 export async function sessionUpdateMeta(sessionId: string, name: string): Promise<SessionMeta> {
   const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_update_meta", {
     sessionId,

@@ -80,7 +80,7 @@ export function Sidebar({
   const activeSessionByProject = useSessionsStore((s) => s.activeSessionByProject);
   const setActiveSession = useSessionsStore((s) => s.setActiveSession);
   const killSession = useSessionsStore((s) => s.killSession);
-  const createSession = useSessionsStore((s) => s.createSession);
+  const restartSession = useSessionsStore((s) => s.restartSession);
   const loadProjectSessions = useSessionsStore((s) => s.loadProjectSessions);
 
   // Load every known project's session list when the projects array changes
@@ -318,12 +318,7 @@ export function Sidebar({
                           className={cn("jq-session-toggle", session.status)}
                           onClick={(e: MouseEvent) => {
                             e.stopPropagation();
-                            void toggleSessionStatus(
-                              session,
-                              project.id,
-                              killSession,
-                              createSession,
-                            );
+                            void toggleSessionStatus(session, killSession, restartSession);
                           }}
                           title={
                             session.status === "running"
@@ -362,18 +357,18 @@ export function Sidebar({
 
 async function toggleSessionStatus(
   session: SessionMeta,
-  projectId: string,
   killSession: (sessionId: string) => Promise<void>,
-  createSession: (projectId: string, name?: string) => Promise<SessionMeta>,
+  restartSession: (sessionId: string) => Promise<SessionMeta>,
 ): Promise<void> {
   try {
     if (session.status === "running") {
       await killSession(session.id);
       return;
     }
-    // For stopped/idle sessions we spawn a fresh one. Real "resume via
-    // claude --resume <id>" support lands in V0.2 (transcript backup).
-    await createSession(projectId, session.name);
+    // For stopped/idle sessions we restart the same row — re-spawns the PTY
+    // under the same session id + name. Real "resume the previous claude
+    // conversation" support lands in V0.2 (transcript backup).
+    await restartSession(session.id);
   } catch (err: unknown) {
     console.error("toggleSessionStatus failed", err);
   }

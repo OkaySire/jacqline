@@ -112,7 +112,7 @@ function SessionDialogForm({
 
   const createSession = useSessionsStore((s) => s.createSession);
 
-  const killSession = useSessionsStore((s) => s.killSession);
+  const deleteSession = useSessionsStore((s) => s.deleteSession);
 
   const [name, setName] = useState<string>(existingSession?.name ?? "");
   const [agent, setAgent] = useState<string>("default");
@@ -131,7 +131,7 @@ function SessionDialogForm({
     setError(null);
     setSubmitting(true);
     try {
-      await killSession(state.sessionId);
+      await deleteSession(state.sessionId);
       onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));

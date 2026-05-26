@@ -108,7 +108,7 @@ export function PanelDebug() {
 
 function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <Section title="Identity">
         <KV label="App version" value={snap.appVersion} mono />
         <KV label="Generated" value={new Date(snap.timestampMs).toISOString()} mono />
@@ -167,12 +167,12 @@ function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
         <KV label="Last installed SHA" value={snap.updater.lastSeenSha ?? "(never)"} mono small />
       </Section>
       <Section title="PATH preview (redacted)">
-        <pre className="text-fg-2 max-h-32 overflow-auto font-mono text-[10.5px] whitespace-pre-wrap">
+        <pre className="text-fg-2 max-h-32 w-full min-w-0 overflow-auto font-mono text-[10.5px] break-all whitespace-pre-wrap">
           {snap.pathPreview === "" ? "(empty)" : snap.pathPreview}
         </pre>
       </Section>
       <Section title={`Recent logs (last ${String(snap.recentLogs.length)} lines)`}>
-        <pre className="text-fg-2 max-h-60 overflow-auto font-mono text-[10.5px] whitespace-pre">
+        <pre className="text-fg-2 max-h-60 w-full min-w-0 overflow-auto font-mono text-[10.5px] whitespace-pre">
           {snap.recentLogs.length === 0 ? "(no log file yet)" : snap.recentLogs.join("\n")}
         </pre>
       </Section>
@@ -188,7 +188,7 @@ function Section({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="bg-bg-2/40 border-line-soft rounded-md border p-3">
+    <section className="bg-bg-2/40 border-line-soft min-w-0 rounded-md border p-3">
       <h3 className="text-fg-3 mb-2 text-[10.5px] font-semibold tracking-wider uppercase">
         {title}
       </h3>

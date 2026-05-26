@@ -136,9 +136,19 @@ body {
    *
    * Bumped from the spec's 6 px to 10 px because at the current
    * `bg-0`/`bg-1` lightness delta (0.025) the 6 px line was too subtle to
-   * register visually as a gap. */
-  grid-template-columns: var(--jq-sb-w) 10px 1fr 0 var(--jq-inspector-w);
+   * register visually as a gap.
+   *
+   * Each track is wrapped in `minmax(0, X)` so a wide child (e.g. the Debug
+   * panel's PATH `<pre>` or a long terminal line) cannot force its track to
+   * grow beyond the configured size. Without minmax(0, …) CSS Grid uses
+   * `auto` as the implicit minimum and content overflow expands the column
+   * — which is what made the MainPane shrink to ~10 chars when the Debug
+   * panel was opened with a long PATH value. */
+  grid-template-columns:
+    minmax(0, var(--jq-sb-w)) 10px minmax(0, 1fr) 0
+    minmax(0, var(--jq-inspector-w));
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   padding: 8px;
   background: var(--color-bg-0);
@@ -147,14 +157,16 @@ body {
 
 .jq-app-frame[data-sb="collapsed"] .jq-main {
   /* Collapsed icon-rail sidebar sits flush with the content (no gap). */
-  grid-template-columns: var(--jq-sb-w-collapsed) 1fr 0 var(--jq-inspector-w);
+  grid-template-columns:
+    minmax(0, var(--jq-sb-w-collapsed)) minmax(0, 1fr) 0
+    minmax(0, var(--jq-inspector-w));
 }
 .jq-app-frame[data-inspector="hidden"] .jq-main {
   /* Inspector hidden: keep the sidebar/content gap, drop the inspector pair. */
-  grid-template-columns: var(--jq-sb-w) 10px 1fr;
+  grid-template-columns: minmax(0, var(--jq-sb-w)) 10px minmax(0, 1fr);
 }
 .jq-app-frame[data-sb="collapsed"][data-inspector="hidden"] .jq-main {
-  grid-template-columns: var(--jq-sb-w-collapsed) 1fr;
+  grid-template-columns: minmax(0, var(--jq-sb-w-collapsed)) minmax(0, 1fr);
 }
 
 /* Empty placeholder occupying the "gap" / "flush" tracks in the 5-track
@@ -262,6 +274,11 @@ body {
   display: grid;
   grid-template-rows: 38px 1fr;
   min-height: 0;
+  /* Without `min-width: 0` the inspector reports its min-content width
+   * (long `<pre>` lines from the Debug panel, etc.) as its preferred size
+   * and the grid track gives it that width — pushing MainPane to ~10 chars
+   * wide. With min-width: 0 the inspector lets its track size dictate. */
+  min-width: 0;
   overflow: hidden;
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.02),

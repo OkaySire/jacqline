@@ -47,6 +47,12 @@ tracing-appender = "0.2"
 # Shell-style tokenizer for the user-configured external_editor template
 shlex = "1"
 
+# In-app updater (custom downloader + SHA256 verification, see updater.rs)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+sha2 = "0.10"
+hex = "0.4"
+futures-util = "0.3"
+
 [profile.release]
 codegen-units = 1
 lto = true

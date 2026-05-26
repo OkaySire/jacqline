@@ -7,6 +7,7 @@ mod pty;
 mod sessions;
 mod setting;
 mod shell;
+mod updater;
 
 use std::path::PathBuf;
 
@@ -93,6 +94,9 @@ pub fn run() {
             project_fs::fs_write,
             external::git_diff,
             external::shell_open_external,
+            updater::updater_check,
+            updater::updater_download,
+            updater::updater_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

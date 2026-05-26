@@ -408,6 +408,70 @@ body {
   color: var(--color-fg-3);
 }
 
+/* ---- Update notice (in-app updater) ---------------------------------------
+ * Pill button between SystemMenu and the window controls. Only renders when
+ * a newer nightly is available or an install flow is in progress.
+ */
+.jq-update-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px 0 7px;
+  margin-right: 4px;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-line);
+  border-radius: 11px;
+  color: var(--color-accent-fg);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.jq-update-notice:hover:not(:disabled) {
+  background: oklch(0.66 0.18 295 / 0.22);
+  color: #fff;
+}
+.jq-update-notice:disabled {
+  cursor: progress;
+}
+.jq-update-notice.busy {
+  background: var(--color-bg-3);
+  color: var(--color-fg-1);
+  border-color: var(--color-line);
+}
+.jq-update-notice.error {
+  background: oklch(0.68 0.18 25 / 0.16);
+  color: var(--color-destructive);
+  border-color: oklch(0.68 0.18 25 / 0.4);
+}
+.jq-update-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent);
+  animation: jq-pulse 2s ease-in-out infinite;
+}
+.jq-update-notice.busy .jq-update-dot {
+  background: var(--color-fg-2);
+  box-shadow: none;
+  animation: none;
+}
+.jq-update-notice.error .jq-update-dot {
+  background: var(--color-destructive);
+  box-shadow: none;
+  animation: none;
+}
+.jq-update-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.75;
+}
+
 /* ---- SystemMenu (Phase G) -------------------------------------------------
  */
 .jq-sysmenu {

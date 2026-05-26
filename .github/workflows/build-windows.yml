@@ -1,18 +1,25 @@
 name: Build Windows MSI
 
 # Produces a Windows installer (.msi) on every push to main and on manual
-# dispatch. The resulting artifact is downloadable from the workflow run page
-# under "Artifacts". Sufficient for users who want to try the app without
-# installing a Rust/Bun toolchain locally.
+# dispatch. Outputs:
+#   1. A workflow-run artifact (`jacqline-windows-msi-<sha>`, 14 day
+#      retention) — same as before, useful for ad-hoc downloads.
+#   2. A rolling GitHub Release tagged `nightly` whose `.msi` + `.sha256`
+#      sidecar are overwritten on every successful build. The in-app updater
+#      (src-tauri/src/updater.rs) polls this release to offer one-click
+#      updates.
 #
-# Code signing + notarization + GitHub Release upload land in Phase 8
-# (release.yml). For now the MSI is unsigned — Windows SmartScreen will warn
-# the user on first run.
+# Code signing + notarization + a versioned GitHub Release (tag `v*`) land
+# in release.yml. For now the MSI is unsigned — Windows SmartScreen will
+# warn the user on first run.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: build-windows-${{ github.ref }}
@@ -49,10 +56,57 @@ jobs:
       - name: Tauri build (release + bundle)
         run: bun run tauri build
 
+      - name: Compute SHA256 sidecar
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          if ($null -eq $msi) { throw "No MSI found under src-tauri/target/release/bundle/msi/" }
+          $hash = (Get-FileHash -Algorithm SHA256 $msi.FullName).Hash.ToLower()
+          $sidecar = "$($msi.FullName).sha256"
+          # `sha256sum`-compatible single-line "<hash>  <filename>"
+          Set-Content -Path $sidecar -Value "$hash  $($msi.Name)" -NoNewline
+          Write-Host "SHA256 = $hash"
+          Write-Host "Sidecar = $sidecar"
+
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
           name: jacqline-windows-msi-${{ github.sha }}
-          path: src-tauri/target/release/bundle/msi/*.msi
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.sha256
           retention-days: 14
           if-no-files-found: error
+
+      - name: Publish/refresh nightly GitHub Release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          $sidecar = "$($msi.FullName).sha256"
+
+          $tag = "nightly"
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+          $built = (Get-Date -Format "yyyy-MM-dd HH:mm 'UTC'")
+          $body = @"
+          Rolling nightly build · commit ``$shortSha`` · built $built
+
+          **Unsigned installer.** Windows SmartScreen will warn on first run — click *More info* → *Run anyway*. Code signing lands at the V0.2 release CI.
+
+          - ``jacqline_*.msi`` — Windows installer (x64)
+          - ``jacqline_*.msi.sha256`` — SHA-256 sidecar (used by the in-app updater)
+
+          The in-app updater (Settings → System menu → Check for updates) polls this release and offers one-click installs.
+          "@
+
+          # Idempotent: create the release the first time, refresh notes after.
+          gh release view $tag --json tagName 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "Jacqline nightly" --notes "$body" --prerelease --target ${{ github.sha }}
+          } else {
+            gh release edit $tag --notes "$body" --prerelease --target ${{ github.sha }}
+          }
+
+          gh release upload $tag "$($msi.FullName)" "$sidecar" --clobber

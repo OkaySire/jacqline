@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { I } from "@/components/icons";
 import { JacqlineMark } from "@/components/jacqline-mark";
 import { SystemMenu } from "@/components/system-menu";
+import { UpdateNotice } from "@/components/update-notice";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -57,6 +58,7 @@ export function TitleBar() {
       </div>
       <div className="jq-tb-center" />
       <div className="jq-tb-right">
+        <UpdateNotice />
         <SystemMenu />
         <div className="jq-tb-divider" />
         <button type="button" className="jq-tb-btn" onClick={onMinimize} title="Minimize">

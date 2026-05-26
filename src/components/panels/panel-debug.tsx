@@ -113,6 +113,7 @@ function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
         <KV label="App version" value={snap.appVersion} mono />
         <KV label="Generated" value={new Date(snap.timestampMs).toISOString()} mono />
         <KV label="App data" value={snap.appDataDir} mono small />
+        <KV label="Log dir" value={snap.logDir} mono small />
         <KV label="Log file" value={snap.logPath} mono small />
       </Section>
       <Section title="OS">
@@ -241,6 +242,7 @@ function formatMarkdown(snap: DebugSnapshot): string {
   lines.push(`**App version:** ${snap.appVersion}`);
   lines.push(`**Generated:** ${new Date(snap.timestampMs).toISOString()}`);
   lines.push(`**App data:** \`${snap.appDataDir}\``);
+  lines.push(`**Log dir:** \`${snap.logDir}\``);
   lines.push(`**Log file:** \`${snap.logPath}\``);
   lines.push("");
   lines.push("## OS");

@@ -59,8 +59,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
-            let log_dir = data_dir.join("logs");
+            // Logs go to Tauri's app_log_dir() — on Windows that resolves to
+            // `%LOCALAPPDATA%\com.okaysire.jacqline\logs`, which is where we
+            // tell users to look in the docs and the Debug panel. Older builds
+            // used `app_data_dir/logs` (Roaming) by mistake; users who hit
+            // that path won't find logs there anymore.
+            let log_dir = app.path().app_log_dir()?;
             let guard: WorkerGuard = init_logging(&log_dir)?;
+            // Mirror tracing's first "starting" line to stderr so a user
+            // launching jacqline from a terminal can see the resolved log
+            // path even if the rolling appender failed to flush.
+            eprintln!("[jacqline] log_dir = {}", log_dir.display());
             // Keep the appender's worker thread alive for the lifetime of the
             // process. Without this the file writes drop silently.
             Box::leak(Box::new(guard));

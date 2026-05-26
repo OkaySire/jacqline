@@ -52,12 +52,17 @@ export function UpdateNotice() {
   }, []);
 
   // One auto-check on mount. Failures stay silent (offline, no nightly yet).
+  // Frontend console.log is intentional — when the updater "didn't run", the
+  // first question is whether this effect even fired. The lines surface in
+  // the DevTools console (Ctrl+Shift+I) and in any external log capture.
   useEffect(() => {
+    console.log("[update-notice] mount, calling updater_check");
     let cancelled: boolean = false;
     void (async () => {
       setPhase("checking");
       try {
         const next: UpdateInfo = await updaterCheck();
+        console.log("[update-notice] updater_check result", next);
         if (cancelled) {
           return;
         }
@@ -67,7 +72,8 @@ export function UpdateNotice() {
         } else {
           setPhase("idle");
         }
-      } catch {
+      } catch (err: unknown) {
+        console.error("[update-notice] updater_check failed", err);
         if (!cancelled) {
           setPhase("idle");
         }

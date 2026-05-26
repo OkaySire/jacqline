@@ -131,6 +131,10 @@ fn set_last_seen_ms(db: &DbState, ms: i64) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn updater_check(db: State<'_, DbState>) -> AppResult<UpdateInfo> {
+    // Mirror to stderr so a CLI-launched build (or anyone tailing the log
+    // file) sees the entry-point even when tracing's appender is misrouted.
+    eprintln!("[updater] check entered");
+    tracing::info!("updater_check entered");
     let url: String = format!(
         "https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/tags/{NIGHTLY_TAG}"
     );
@@ -216,6 +220,8 @@ pub async fn updater_download(
     download_filename: String,
     published_at_ms: i64,
 ) -> AppResult<DownloadedUpdate> {
+    eprintln!("[updater] download entered: {download_filename}");
+    tracing::info!(filename = %download_filename, "updater_download entered");
     let client: reqwest::Client = build_client()?;
 
     // Fetch the sidecar first — small, lets us fail fast on a bad release
@@ -330,6 +336,8 @@ struct ProgressPayload {
 
 #[tauri::command]
 pub async fn updater_install(app: AppHandle, local_path: String) -> AppResult<()> {
+    eprintln!("[updater] install entered: {local_path}");
+    tracing::info!(path = %local_path, "updater_install entered");
     let path: PathBuf = PathBuf::from(&local_path);
     if !path.is_file() {
         return Err(AppError::Validation(format!(

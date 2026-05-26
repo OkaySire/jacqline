@@ -28,6 +28,7 @@ pub struct DebugSnapshot {
     pub app_version: String,
     pub timestamp_ms: i64,
     pub app_data_dir: String,
+    pub log_dir: String,
     pub log_path: String,
     pub os: OsInfo,
     pub wsl_distros: Vec<String>,
@@ -76,7 +77,7 @@ pub struct UpdaterState {
 #[tauri::command]
 pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult<DebugSnapshot> {
     let app_data_dir: PathBuf = app.path().app_data_dir()?;
-    let log_dir: PathBuf = app_data_dir.join("logs");
+    let log_dir: PathBuf = app.path().app_log_dir()?;
     let log_path: PathBuf =
         find_latest_log(&log_dir).unwrap_or_else(|| log_dir.join("jacqline.log"));
 
@@ -107,6 +108,7 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
         timestamp_ms: now_millis(),
         app_data_dir: app_data_dir.to_string_lossy().into_owned(),
+        log_dir: log_dir.to_string_lossy().into_owned(),
         log_path: log_path.to_string_lossy().into_owned(),
         os,
         wsl_distros,
@@ -132,6 +134,9 @@ fn now_millis() -> i64 {
 /// `jacqline.log.YYYY-MM-DD` files — picking the freshest one gives us
 /// today's log without parsing the date.
 fn find_latest_log(log_dir: &PathBuf) -> Option<PathBuf> {
+    // tracing-appender daily rolling emits `jacqline.log.YYYY-MM-DD`.
+    // We pick whichever file under log_dir whose name starts with
+    // "jacqline.log" was most recently modified.
     let entries = std::fs::read_dir(log_dir).ok()?;
     let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = entries
         .filter_map(|res| res.ok())

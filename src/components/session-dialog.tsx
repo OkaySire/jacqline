@@ -112,13 +112,31 @@ function SessionDialogForm({
 
   const createSession = useSessionsStore((s) => s.createSession);
 
+  const killSession = useSessionsStore((s) => s.killSession);
+
   const [name, setName] = useState<string>(existingSession?.name ?? "");
   const [agent, setAgent] = useState<string>("default");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
 
   if (project === undefined) {
     return null;
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (state.sessionId === null) {
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await killSession(state.sessionId);
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -215,13 +233,54 @@ function SessionDialogForm({
         </div>
         {error !== null && <p className="text-destructive text-sm">{error}</p>}
       </div>
-      <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onClose}>
-          Annuler
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "…" : state.mode === "new" ? "Créer la session" : "Enregistrer"}
-        </Button>
+      <DialogFooter className="sm:justify-between">
+        {state.mode === "edit" ? (
+          confirmDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-destructive text-xs">Confirmer ?</span>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => void handleDelete()}
+                disabled={submitting}
+              >
+                Oui, supprimer
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDelete(false)}
+                disabled={submitting}
+              >
+                Non
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirmDelete(true)}
+              disabled={submitting}
+            >
+              Supprimer la session
+            </Button>
+          )
+        ) : (
+          /* Keep the layout balanced in "new" mode — empty placeholder. */
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "…" : state.mode === "new" ? "Créer la session" : "Enregistrer"}
+          </Button>
+        </div>
       </DialogFooter>
     </form>
   );

@@ -45,10 +45,13 @@
   --radius-l: 12px;
   --radius-xl: 16px;
 
-  /* App sizing */
+  /* App sizing. Mockup defaults are 248/360 but at 1280-ish laptop widths the
+   * content pane gets cramped (~666 px). Trimming the inspector to 320 gives
+   * the main pane ~40 px of extra breathing room without breaking the
+   * inspector layout. */
   --jq-sb-w: 248px;
   --jq-sb-w-collapsed: 56px;
-  --jq-inspector-w: 360px;
+  --jq-inspector-w: 320px;
   --jq-titlebar-h: 38px;
 
   --font-sans: "Geist Variable", ui-sans-serif, -apple-system, system-ui, sans-serif;
@@ -125,12 +128,16 @@ body {
 
 .jq-main {
   display: grid;
-  /* 5-track grid mirroring the mockup: sidebar | 6 px gap | content | 0 |
-   * inspector. The explicit 6 px column keeps the floating gap between
-   * sidebar and content, while the 0 column keeps content+inspector flush
-   * against each other (inspector is docked to the window edge). Using
-   * dedicated tracks instead of `gap` lets us mix gap sizes per pair. */
-  grid-template-columns: var(--jq-sb-w) 6px 1fr 0 var(--jq-inspector-w);
+  /* 5-track grid mirroring the mockup: sidebar | gap | content | 0 |
+   * inspector. The explicit gap column keeps the floating gap between
+   * sidebar and content; the 0 column keeps content+inspector flush against
+   * each other (inspector is docked to the window edge). Using dedicated
+   * tracks instead of `gap` lets us mix gap sizes per pair.
+   *
+   * Bumped from the spec's 6 px to 10 px because at the current
+   * `bg-0`/`bg-1` lightness delta (0.025) the 6 px line was too subtle to
+   * register visually as a gap. */
+  grid-template-columns: var(--jq-sb-w) 10px 1fr 0 var(--jq-inspector-w);
   min-height: 0;
   overflow: hidden;
   padding: 8px;
@@ -139,12 +146,12 @@ body {
 }
 
 .jq-app-frame[data-sb="collapsed"] .jq-main {
-  /* Collapsed icon-rail sidebar sits flush with the content (no 6 px gap). */
+  /* Collapsed icon-rail sidebar sits flush with the content (no gap). */
   grid-template-columns: var(--jq-sb-w-collapsed) 1fr 0 var(--jq-inspector-w);
 }
 .jq-app-frame[data-inspector="hidden"] .jq-main {
   /* Inspector hidden: keep the sidebar/content gap, drop the inspector pair. */
-  grid-template-columns: var(--jq-sb-w) 6px 1fr;
+  grid-template-columns: var(--jq-sb-w) 10px 1fr;
 }
 .jq-app-frame[data-sb="collapsed"][data-inspector="hidden"] .jq-main {
   grid-template-columns: var(--jq-sb-w-collapsed) 1fr;

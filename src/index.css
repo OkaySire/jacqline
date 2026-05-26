@@ -125,7 +125,12 @@ body {
 
 .jq-main {
   display: grid;
-  grid-template-columns: var(--jq-sb-w) 1fr var(--jq-inspector-w);
+  /* 5-track grid mirroring the mockup: sidebar | 6 px gap | content | 0 |
+   * inspector. The explicit 6 px column keeps the floating gap between
+   * sidebar and content, while the 0 column keeps content+inspector flush
+   * against each other (inspector is docked to the window edge). Using
+   * dedicated tracks instead of `gap` lets us mix gap sizes per pair. */
+  grid-template-columns: var(--jq-sb-w) 6px 1fr 0 var(--jq-inspector-w);
   min-height: 0;
   overflow: hidden;
   padding: 8px;
@@ -134,10 +139,12 @@ body {
 }
 
 .jq-app-frame[data-sb="collapsed"] .jq-main {
-  grid-template-columns: var(--jq-sb-w-collapsed) 1fr var(--jq-inspector-w);
+  /* Collapsed icon-rail sidebar sits flush with the content (no 6 px gap). */
+  grid-template-columns: var(--jq-sb-w-collapsed) 1fr 0 var(--jq-inspector-w);
 }
 .jq-app-frame[data-inspector="hidden"] .jq-main {
-  grid-template-columns: var(--jq-sb-w) 1fr;
+  /* Inspector hidden: keep the sidebar/content gap, drop the inspector pair. */
+  grid-template-columns: var(--jq-sb-w) 6px 1fr;
 }
 .jq-app-frame[data-sb="collapsed"][data-inspector="hidden"] .jq-main {
   grid-template-columns: var(--jq-sb-w-collapsed) 1fr;

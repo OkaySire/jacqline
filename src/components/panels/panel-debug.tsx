@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { I } from "@/components/icons";
 import { debugSnapshot, type DebugSnapshot, type RecentExit } from "@/lib/api/debug";
+import { getConsoleRing, type ConsoleRingEntry } from "@/lib/console-ring";
 
 /**
  * One-stop debug snapshot panel. Calls `debug_snapshot` on mount, renders
@@ -176,8 +177,29 @@ function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
           {snap.recentLogs.length === 0 ? "(no log file yet)" : snap.recentLogs.join("\n")}
         </pre>
       </Section>
+      <ConsoleRingSection />
     </div>
   );
+}
+
+function ConsoleRingSection() {
+  const entries: readonly ConsoleRingEntry[] = getConsoleRing();
+  return (
+    <Section title={`Recent console events (last ${String(entries.length)})`}>
+      <pre className="text-fg-2 max-h-60 w-full min-w-0 overflow-auto font-mono text-[10.5px] whitespace-pre">
+        {entries.length === 0 ? "(no console activity yet)" : formatRing(entries)}
+      </pre>
+    </Section>
+  );
+}
+
+function formatRing(entries: readonly ConsoleRingEntry[]): string {
+  return entries
+    .map((e: ConsoleRingEntry): string => {
+      const iso: string = new Date(e.ts).toISOString().slice(11, 23);
+      return `[${iso}] ${e.level.padEnd(5)} ${e.text}`;
+    })
+    .join("\n");
 }
 
 function Section({
@@ -277,6 +299,12 @@ function formatMarkdown(snap: DebugSnapshot): string {
   lines.push(`## Recent logs (last ${String(snap.recentLogs.length)} lines)`);
   lines.push("```");
   lines.push(snap.recentLogs.length === 0 ? "(no log file yet)" : snap.recentLogs.join("\n"));
+  lines.push("```");
+  const ring: readonly ConsoleRingEntry[] = getConsoleRing();
+  lines.push("");
+  lines.push(`## Recent console events (last ${String(ring.length)})`);
+  lines.push("```");
+  lines.push(ring.length === 0 ? "(no console activity yet)" : formatRing(ring));
   lines.push("```");
   return lines.join("\n");
 }

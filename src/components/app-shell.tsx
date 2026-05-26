@@ -45,8 +45,25 @@ export function AppShell() {
             onEditSession={openEditSession}
             onOpenProjectConfig={openProjectConfig}
           />
+          {/*
+           * CSS-grid track placeholders. The `.jq-main` grid has 5 explicit
+           * tracks (sidebar | gap | content | flush | inspector); auto-flow
+           * places children sequentially into the cells, so we need an empty
+           * div for each "non-component" track or the content would land in
+           * the gap and the inspector in the content track. Mirrors the
+           * mockup's `<SidebarResizer />` / `<InspectorResizer />` placement.
+           * When the matching panel is hidden, the gap track is removed from
+           * the grid template (see `index.css`) and the placeholder isn't
+           * rendered either.
+           */}
+          {!sidebarCollapsed && <div className="jq-track-spacer" aria-hidden />}
           <MainPane />
-          {!inspectorHidden && <Inspector />}
+          {!inspectorHidden && (
+            <>
+              <div className="jq-track-spacer" aria-hidden />
+              <Inspector />
+            </>
+          )}
         </div>
       </div>
       <NewProjectDialog />

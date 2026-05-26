@@ -92,6 +92,51 @@ impl PtyManager {
 
 // ----- spawn helpers --------------------------------------------------------
 
+/// Shell-script preamble we inject before `claude` for POSIX shells
+/// (bash / zsh / WSL bash). The preamble:
+///
+/// - prints a cyan heartbeat line so we can confirm PTY data is reaching
+///   the frontend even before claude itself produces output,
+/// - prints the resolved `claude` path (or a yellow warning if missing),
+/// - dumps `$PATH` so we can compare with what a vanilla terminal sees,
+/// - runs `claude`,
+/// - prints the exit code,
+/// - drops the user into an interactive bash so they can poke around if
+///   anything failed.
+///
+/// Octal escapes (`\033`) are interpreted by `printf`, not by the Rust
+/// string literal — that's why every backslash is doubled in source.
+const POSIX_CLAUDE_PREAMBLE: &str = "\
+    printf '\\033[36m> jacqline: spawning claude...\\033[0m\\r\\n'; \
+    type -p claude || printf '\\033[33m\\xe2\\x9a\\xa0 claude not found in PATH\\033[0m\\r\\n'; \
+    printf 'PATH: %s\\r\\n' \"$PATH\"; \
+    claude; rc=$?; \
+    printf '\\033[31m< claude exited with %d\\033[0m\\r\\n' \"$rc\"; \
+    exec bash -i\
+";
+
+/// PowerShell equivalent of [`POSIX_CLAUDE_PREAMBLE`]. Relies on `-NoExit`
+/// at the launcher level to keep the shell alive after `claude` returns.
+const PWSH_CLAUDE_PREAMBLE: &str = "\
+    Write-Host -ForegroundColor Cyan '> jacqline: spawning claude...'; \
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { \
+      Write-Host -ForegroundColor Yellow 'WARNING: claude not found in PATH' \
+    }; \
+    Write-Host \"PATH: $env:Path\"; \
+    claude; \
+    $rc = $LASTEXITCODE; \
+    Write-Host -ForegroundColor Red \"< claude exited with $rc\"\
+";
+
+/// cmd.exe equivalent. No ANSI; uses `&&` chaining and `/k` keeps the
+/// shell open after `claude` exits so the user can still type.
+const CMD_CLAUDE_PREAMBLE: &str = "\
+    echo ^> jacqline: spawning claude... && \
+    where claude >nul 2>&1 || echo (warning) claude not found in PATH && \
+    echo PATH: %PATH% && \
+    claude & echo ^< claude exited with %ERRORLEVEL%\
+";
+
 fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
     let mut cmd: CommandBuilder = match project.shell_kind {
         ShellKind::Native => {
@@ -105,7 +150,7 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
                     c.arg("-NoExit");
                     if with_claude {
                         c.arg("-Command");
-                        c.arg("claude");
+                        c.arg(PWSH_CLAUDE_PREAMBLE);
                     }
                     c
                 }
@@ -113,7 +158,7 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
                     let mut c = CommandBuilder::new("cmd");
                     if with_claude {
                         c.arg("/k");
-                        c.arg("claude");
+                        c.arg(CMD_CLAUDE_PREAMBLE);
                     }
                     c
                 }
@@ -125,7 +170,7 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
                     // so `claude` would be "command not found" and the shell
                     // would exit, leaving the user with a blank terminal.
                     //
-                    // Use `-l -i -c claude` for bash/zsh so `.bashrc` /
+                    // Use `-l -i -c <preamble>` for bash/zsh so `.bashrc` /
                     // `.zshrc` get sourced too. fish doesn't have the
                     // same login/non-login divide, so we keep `-l -c` there.
                     let mut c = CommandBuilder::new(shell);
@@ -135,14 +180,14 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
                     }
                     if with_claude {
                         c.arg("-c");
-                        c.arg("claude");
+                        c.arg(POSIX_CLAUDE_PREAMBLE);
                     }
                     c
                 }
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash -lic claude
+            // wsl.exe -d <distro> --cd <cwd> -- bash -l -i -c <preamble>
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
@@ -154,7 +199,7 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
             c.arg("-i");
             if with_claude {
                 c.arg("-c");
-                c.arg("claude");
+                c.arg(POSIX_CLAUDE_PREAMBLE);
             }
             c
         }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { I } from "@/components/icons";
+import { UPDATE_CHECK_EVENT } from "@/components/update-notice";
 import { cn } from "@/lib/utils";
 
 interface SystemStats {
@@ -94,6 +95,17 @@ export function SystemMenu() {
           <Gauge label="Disque" value={stats.diskPct} unit="%" />
           <Gauge label="Réseau" value={stats.netKbps} unit=" kB/s" max={500} />
           <p className="text-fg-3 mt-2 text-[10.5px]">Live system stats land in V0.2.</p>
+          <button
+            type="button"
+            className="border-line-soft text-fg-1 hover:bg-bg-2 mt-3 flex w-full items-center justify-center gap-2 rounded border px-3 py-2 text-xs"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent(UPDATE_CHECK_EVENT));
+              setOpen(false);
+            }}
+          >
+            <I.refresh />
+            Check for updates
+          </button>
         </div>
       )}
     </div>

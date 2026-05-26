@@ -2,13 +2,14 @@ import { useState } from "react";
 
 import { I } from "@/components/icons";
 import { PanelBrowser } from "@/components/panels/panel-browser";
+import { PanelDebug } from "@/components/panels/panel-debug";
 import { PanelDiff } from "@/components/panels/panel-diff";
 import { PanelFile } from "@/components/panels/panel-file";
 import { PanelTasks } from "@/components/panels/panel-tasks";
 import { cn } from "@/lib/utils";
 import { useActiveProject } from "@/stores/projects";
 
-type PanelType = "file" | "browser" | "tasks" | "diff";
+type PanelType = "file" | "browser" | "tasks" | "diff" | "debug";
 
 interface InspectorTab {
   readonly id: string;
@@ -63,6 +64,13 @@ const PANEL_CHOICES: readonly PanelChoice[] = [
   { key: "browser", type: "browser", title: "Browser", icon: "globe", description: "Web preview" },
   { key: "tasks", type: "tasks", title: "Tasks", icon: "activity", description: "Agent task list" },
   { key: "diff", type: "diff", title: "Diff", icon: "branch", description: "git diff vs HEAD" },
+  {
+    key: "debug",
+    type: "debug",
+    title: "Debug",
+    icon: "bug",
+    description: "Snapshot for bug reports",
+  },
 ];
 
 /**
@@ -186,6 +194,9 @@ function PanelBody({ tab, projectId }: { readonly tab: InspectorTab; readonly pr
   }
   if (tab.type === "tasks") {
     return <PanelTasks />;
+  }
+  if (tab.type === "debug") {
+    return <PanelDebug />;
   }
   return <PanelDiff projectId={projectId} />;
 }

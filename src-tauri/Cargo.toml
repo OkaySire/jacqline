@@ -17,7 +17,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `devtools` keeps the WebView's devtools panel reachable in release builds
+# (Ctrl+Shift+I on Windows). Production-quality apps usually leave this off,
+# but until the in-app log viewer covers everything we want a fallback that
+# works without recompiling.
+tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-dialog = "2"
 
 # Async + concurrency

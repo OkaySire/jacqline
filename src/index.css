@@ -157,6 +157,19 @@ body {
   grid-template-columns: var(--jq-sb-w-collapsed) 1fr;
 }
 
+/* Empty placeholder occupying the "gap" / "flush" tracks in the 5-track
+ * grid. Without these, CSS grid auto-flow would put MainPane into the gap
+ * track (10 px wide) and Inspector into the content track (1fr) — which is
+ * the bug PR #23 fixes. Placeholders carry no styling on their own; the
+ * track itself dictates the cell width.
+ *
+ * Future drag-to-resize will replace these divs with `SidebarResizer` /
+ * `InspectorResizer` components, but the positioning contract stays the
+ * same. */
+.jq-track-spacer {
+  min-width: 0;
+}
+
 /* Sidebar + Inspector currently use their own Tailwind classes — they still
  * fill their grid cell when their `w-[…px]` is removed in phases D / G. For
  * Phase C the grid is dimensioning the columns; the panels stretch within. */

@@ -144,9 +144,10 @@ pub async fn updater_check(db: State<'_, DbState>) -> AppResult<UpdateInfo> {
         .map_err(|e| AppError::Other(format!("github fetch failed: {e}")))?;
 
     if !resp.status().is_success() {
+        let status = resp.status();
+        tracing::warn!(%status, %url, "updater check: github returned non-success");
         return Err(AppError::Other(format!(
-            "github releases/tags/{NIGHTLY_TAG} returned {}",
-            resp.status(),
+            "github releases/tags/{NIGHTLY_TAG} returned {status}",
         )));
     }
 
@@ -172,6 +173,16 @@ pub async fn updater_check(db: State<'_, DbState>) -> AppResult<UpdateInfo> {
         Some(seen) => published_at_ms > seen,
         None => true,
     };
+
+    tracing::info!(
+        tag = %release.tag_name,
+        published_at = %release.published_at,
+        published_at_ms,
+        last_seen_ms = ?last_seen_ms,
+        is_newer,
+        msi_size = msi.size,
+        "updater check completed",
+    );
 
     Ok(UpdateInfo {
         tag: release.tag_name,

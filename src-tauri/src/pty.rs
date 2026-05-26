@@ -51,6 +51,10 @@ impl PtyManager {
             .map_err(|_| AppError::Other("pty manager mutex poisoned".into()))
     }
 
+    fn contains(&self, id: &str) -> AppResult<bool> {
+        Ok(self.lock_sessions()?.contains_key(id))
+    }
+
     fn insert(&self, handle: PtyHandle) -> AppResult<SessionMeta> {
         let meta: SessionMeta = handle.meta.clone();
         self.lock_sessions()?.insert(meta.id.clone(), handle);
@@ -148,26 +152,24 @@ struct ExitPayload {
     code: Option<u32>,
 }
 
-// ----- commands -------------------------------------------------------------
+/// Output of [`spawn_pty_tasks`] — everything the caller needs to assemble a
+/// `PtyHandle`.
+struct SpawnedPty {
+    pid: u32,
+    master: Box<dyn MasterPty + Send>,
+    write_tx: UnboundedSender<Vec<u8>>,
+}
 
-#[tauri::command]
-pub async fn session_create(
+/// Open a fresh PTY for `project`, spawn the provider command inside it, and
+/// kick off the reader / writer / waiter background tasks. Caller is
+/// responsible for inserting the resulting handle into the `PtyManager` and
+/// persisting / refreshing the corresponding row in `sessions`.
+fn spawn_pty_tasks(
     app: AppHandle,
-    db: State<'_, DbState>,
-    manager: State<'_, PtyManager>,
-    project_id: String,
-    name: Option<String>,
-) -> AppResult<SessionMeta> {
-    let (project, session_name): (Project, String) = {
-        let conn = db.lock()?;
-        let project: Project = project::get_by_id(&conn, &project_id)?;
-        let session_name: String = match name.as_ref().map(|s| s.trim()) {
-            Some(trimmed) if !trimmed.is_empty() => trimmed.to_owned(),
-            _ => sessions::next_default_name(&conn, &project_id)?,
-        };
-        (project, session_name)
-    };
-
+    db_arc: Arc<Mutex<Connection>>,
+    project: &Project,
+    session_id: &str,
+) -> AppResult<SpawnedPty> {
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -178,7 +180,7 @@ pub async fn session_create(
         })
         .map_err(|e| AppError::Pty(format!("openpty failed: {e}")))?;
 
-    let cmd: CommandBuilder = build_command(&project);
+    let cmd: CommandBuilder = build_command(project);
     let mut child = pair
         .slave
         .spawn_command(cmd)
@@ -198,35 +200,14 @@ pub async fn session_create(
         .take_writer()
         .map_err(|e| AppError::Pty(format!("take writer failed: {e}")))?;
 
-    let session_id: String = Uuid::new_v4().to_string();
-    let started_at: i64 = now_millis();
-    let meta = SessionMeta {
-        id: session_id.clone(),
-        project_id: project.id.clone(),
-        name: session_name,
-        claude_id: String::new(),
-        status: SessionStatus::Running,
-        pid,
-        started_at,
-        ended_at: None,
-    };
-
-    // Persist before we expose the session anywhere — if the INSERT fails we
-    // haven't yet started any background tasks and the spawned child will be
-    // killed when we drop the master at function exit.
-    {
-        let conn = db.lock()?;
-        sessions::insert(&conn, &meta)?;
-    }
-
     let (write_tx, mut write_rx) = unbounded_channel::<Vec<u8>>();
 
-    // Reader: blocking I/O lives on a blocking-tokio thread; each chunk is
-    // emitted as a `pty:data:<id>` event with `Vec<u8>` payload.
+    // Reader: blocking I/O on a blocking-tokio thread; each chunk emitted as
+    // a `pty:data:<id>` event.
     {
         let data_event: String = format!("pty:data:{session_id}");
         let app_handle: AppHandle = app.clone();
-        let session_id_for_log: String = session_id.clone();
+        let session_id_log: String = session_id.to_owned();
         tokio::task::spawn_blocking(move || {
             let mut reader = reader;
             let mut buf: Vec<u8> = vec![0u8; READ_BUFFER_BYTES];
@@ -241,7 +222,7 @@ pub async fn session_create(
                         }
                     }
                     Err(err) => {
-                        tracing::debug!(%err, session = %session_id_for_log, "pty read ended");
+                        tracing::debug!(%err, session = %session_id_log, "pty read ended");
                         break;
                     }
                 }
@@ -262,28 +243,26 @@ pub async fn session_create(
         }
     });
 
-    // Waiter: blocks until child exits, then persists `status=stopped` in SQL
-    // and emits `pty:exit:<id>`.
+    // Waiter: blocks until child exits, persists `status=stopped` in SQL,
+    // emits `pty:exit:<id>`.
     {
         let exit_event: String = format!("pty:exit:{session_id}");
         let app_handle: AppHandle = app.clone();
-        let session_id_for_wait: String = session_id.clone();
-        let db_arc: Arc<Mutex<Connection>> = db.arc();
+        let session_id_wait: String = session_id.to_owned();
         tokio::task::spawn_blocking(move || {
             let status = child.wait();
             let code: Option<u32> = status.ok().map(|s| s.exit_code());
 
             match db_arc.lock() {
                 Ok(conn) => {
-                    if let Err(err) =
-                        sessions::mark_stopped(&conn, &session_id_for_wait, now_millis())
+                    if let Err(err) = sessions::mark_stopped(&conn, &session_id_wait, now_millis())
                     {
-                        tracing::warn!(%err, session = %session_id_for_wait, "mark_stopped failed");
+                        tracing::warn!(%err, session = %session_id_wait, "mark_stopped failed");
                     }
                 }
                 Err(_) => {
                     tracing::warn!(
-                        session = %session_id_for_wait,
+                        session = %session_id_wait,
                         "db mutex poisoned; cannot mark session stopped",
                     );
                 }
@@ -295,20 +274,124 @@ pub async fn session_create(
         });
     }
 
-    manager.insert(PtyHandle {
-        meta: meta.clone(),
+    Ok(SpawnedPty {
+        pid,
         master: pair.master,
         write_tx,
+    })
+}
+
+// ----- commands -------------------------------------------------------------
+
+#[tauri::command]
+pub async fn session_create(
+    app: AppHandle,
+    db: State<'_, DbState>,
+    manager: State<'_, PtyManager>,
+    project_id: String,
+    name: Option<String>,
+) -> AppResult<SessionMeta> {
+    let (project, session_name): (Project, String) = {
+        let conn = db.lock()?;
+        let project: Project = project::get_by_id(&conn, &project_id)?;
+        let session_name: String = match name.as_ref().map(|s| s.trim()) {
+            Some(trimmed) if !trimmed.is_empty() => trimmed.to_owned(),
+            _ => sessions::next_default_name(&conn, &project_id)?,
+        };
+        (project, session_name)
+    };
+
+    let session_id: String = Uuid::new_v4().to_string();
+    let started_at: i64 = now_millis();
+
+    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id)?;
+
+    let meta = SessionMeta {
+        id: session_id.clone(),
+        project_id: project.id.clone(),
+        name: session_name,
+        claude_id: String::new(),
+        status: SessionStatus::Running,
+        pid: spawned.pid,
+        started_at,
+        ended_at: None,
+    };
+
+    {
+        let conn = db.lock()?;
+        sessions::insert(&conn, &meta)?;
+    }
+
+    manager.insert(PtyHandle {
+        meta: meta.clone(),
+        master: spawned.master,
+        write_tx: spawned.write_tx,
     })?;
 
     tracing::info!(
         session = %session_id,
         project = %project.id,
         name = %meta.name,
-        pid,
+        pid = spawned.pid,
         shell_kind = ?project.shell_kind,
         shell_value = %project.shell_value,
         "session created",
+    );
+
+    Ok(meta)
+}
+
+#[tauri::command]
+pub async fn session_restart(
+    app: AppHandle,
+    db: State<'_, DbState>,
+    manager: State<'_, PtyManager>,
+    session_id: String,
+) -> AppResult<SessionMeta> {
+    if manager.contains(&session_id)? {
+        return Err(AppError::Validation(
+            "session is already running; kill it before restarting".into(),
+        ));
+    }
+
+    let (project, existing): (Project, SessionMeta) = {
+        let conn = db.lock()?;
+        let existing: SessionMeta = sessions::get_by_id(&conn, &session_id)?;
+        let project: Project = project::get_by_id(&conn, &existing.project_id)?;
+        (project, existing)
+    };
+
+    let started_at: i64 = now_millis();
+    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id)?;
+
+    {
+        let conn = db.lock()?;
+        sessions::mark_running(&conn, &session_id, spawned.pid, started_at)?;
+    }
+
+    let meta = SessionMeta {
+        id: session_id.clone(),
+        project_id: existing.project_id,
+        name: existing.name.clone(),
+        claude_id: existing.claude_id,
+        status: SessionStatus::Running,
+        pid: spawned.pid,
+        started_at,
+        ended_at: None,
+    };
+
+    manager.insert(PtyHandle {
+        meta: meta.clone(),
+        master: spawned.master,
+        write_tx: spawned.write_tx,
+    })?;
+
+    tracing::info!(
+        session = %session_id,
+        project = %project.id,
+        name = %meta.name,
+        pid = spawned.pid,
+        "session restarted",
     );
 
     Ok(meta)
@@ -364,6 +447,32 @@ pub async fn session_kill(
     } else {
         tracing::info!(session = %session_id, "session killed");
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn session_delete(
+    db: State<'_, DbState>,
+    manager: State<'_, PtyManager>,
+    session_id: String,
+) -> AppResult<()> {
+    // First drop the PtyHandle if any — closes the master fd, SIGHUPs the
+    // child. The waiter would normally race in and `UPDATE status='stopped'`
+    // but since we're about to DELETE the row anyway, that update lands on
+    // zero rows and that's fine.
+    let removed: bool = manager.remove(&session_id)?;
+    let deleted: bool = {
+        let conn = db.lock()?;
+        sessions::delete(&conn, &session_id)?
+    };
+    if !deleted {
+        return Err(AppError::NotFound);
+    }
+    tracing::info!(
+        session = %session_id,
+        had_pty = removed,
+        "session deleted",
+    );
     Ok(())
 }
 

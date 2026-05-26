@@ -92,38 +92,57 @@ impl PtyManager {
 
 // ----- spawn helpers --------------------------------------------------------
 
-fn build_command(project: &Project) -> CommandBuilder {
+fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
     let mut cmd: CommandBuilder = match project.shell_kind {
         ShellKind::Native => {
             let shell: &str = project.shell_value.as_str();
             match shell {
                 "pwsh" | "powershell" => {
                     let mut c = CommandBuilder::new(shell);
+                    // `-NoExit` keeps the shell open after the command exits,
+                    // so even when `claude` isn't found / crashes early the
+                    // user sees the shell and can debug.
                     c.arg("-NoExit");
-                    c.arg("-Command");
-                    c.arg("claude");
+                    if with_claude {
+                        c.arg("-Command");
+                        c.arg("claude");
+                    }
                     c
                 }
                 "cmd" => {
                     let mut c = CommandBuilder::new("cmd");
-                    c.arg("/k");
-                    c.arg("claude");
+                    if with_claude {
+                        c.arg("/k");
+                        c.arg("claude");
+                    }
                     c
                 }
                 _ => {
-                    // bash / zsh / fish / dash / ash / etc. — login shell so
-                    // ~/.bashrc / ~/.zshrc / fish config get sourced and the
-                    // user's PATH (where `claude` lives) is on it.
+                    // bash / zsh / fish / dash / ash. We previously used
+                    // `-l -c claude` (login non-interactive). Login shells
+                    // source `.bash_profile` / `.profile` but NOT `.bashrc`,
+                    // where nvm/pnpm/asdf/cargo bin paths usually live —
+                    // so `claude` would be "command not found" and the shell
+                    // would exit, leaving the user with a blank terminal.
+                    //
+                    // Use `-l -i -c claude` for bash/zsh so `.bashrc` /
+                    // `.zshrc` get sourced too. fish doesn't have the
+                    // same login/non-login divide, so we keep `-l -c` there.
                     let mut c = CommandBuilder::new(shell);
                     c.arg("-l");
-                    c.arg("-c");
-                    c.arg("claude");
+                    if shell == "bash" || shell == "zsh" {
+                        c.arg("-i");
+                    }
+                    if with_claude {
+                        c.arg("-c");
+                        c.arg("claude");
+                    }
                     c
                 }
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash -lc 'claude'
+            // wsl.exe -d <distro> --cd <cwd> -- bash -lic claude
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
@@ -131,8 +150,12 @@ fn build_command(project: &Project) -> CommandBuilder {
             c.arg(&project.cwd);
             c.arg("--");
             c.arg("bash");
-            c.arg("-lc");
-            c.arg("claude");
+            c.arg("-l");
+            c.arg("-i");
+            if with_claude {
+                c.arg("-c");
+                c.arg("claude");
+            }
             c
         }
     };
@@ -169,6 +192,7 @@ fn spawn_pty_tasks(
     db_arc: Arc<Mutex<Connection>>,
     project: &Project,
     session_id: &str,
+    with_claude: bool,
 ) -> AppResult<SpawnedPty> {
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -180,7 +204,7 @@ fn spawn_pty_tasks(
         })
         .map_err(|e| AppError::Pty(format!("openpty failed: {e}")))?;
 
-    let cmd: CommandBuilder = build_command(project);
+    let cmd: CommandBuilder = build_command(project, with_claude);
     let mut child = pair
         .slave
         .spawn_command(cmd)
@@ -290,7 +314,9 @@ pub async fn session_create(
     manager: State<'_, PtyManager>,
     project_id: String,
     name: Option<String>,
+    with_claude: Option<bool>,
 ) -> AppResult<SessionMeta> {
+    let with_claude: bool = with_claude.unwrap_or(true);
     let (project, session_name): (Project, String) = {
         let conn = db.lock()?;
         let project: Project = project::get_by_id(&conn, &project_id)?;
@@ -304,7 +330,7 @@ pub async fn session_create(
     let session_id: String = Uuid::new_v4().to_string();
     let started_at: i64 = now_millis();
 
-    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id)?;
+    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id, with_claude)?;
 
     let meta = SessionMeta {
         id: session_id.clone(),
@@ -335,6 +361,7 @@ pub async fn session_create(
         pid = spawned.pid,
         shell_kind = ?project.shell_kind,
         shell_value = %project.shell_value,
+        with_claude,
         "session created",
     );
 
@@ -347,7 +374,9 @@ pub async fn session_restart(
     db: State<'_, DbState>,
     manager: State<'_, PtyManager>,
     session_id: String,
+    with_claude: Option<bool>,
 ) -> AppResult<SessionMeta> {
+    let with_claude: bool = with_claude.unwrap_or(true);
     if manager.contains(&session_id)? {
         return Err(AppError::Validation(
             "session is already running; kill it before restarting".into(),
@@ -362,7 +391,7 @@ pub async fn session_restart(
     };
 
     let started_at: i64 = now_millis();
-    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id)?;
+    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id, with_claude)?;
 
     {
         let conn = db.lock()?;
@@ -391,6 +420,7 @@ pub async fn session_restart(
         project = %project.id,
         name = %meta.name,
         pid = spawned.pid,
+        with_claude,
         "session restarted",
     );
 

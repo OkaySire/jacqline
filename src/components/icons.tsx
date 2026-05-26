@@ -401,4 +401,15 @@ export const I = {
       <circle cx="4" cy="4" r="2" />
     </svg>
   ),
+  bug: (p: IconProps): ReactElement => (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}>
+      <ellipse cx="8" cy="9" rx="3.2" ry="4" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M4.8 6.2L3 4.5M11.2 6.2L13 4.5M4.8 11.8L3 13.5M11.2 11.8L13 13.5M4.8 9H2M11.2 9H14M8 5V2.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
 };

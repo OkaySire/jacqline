@@ -1,4 +1,5 @@
 mod db;
+mod debug;
 mod error;
 mod external;
 mod project;
@@ -99,6 +100,7 @@ pub fn run() {
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
+            debug::debug_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

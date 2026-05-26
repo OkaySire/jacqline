@@ -49,7 +49,6 @@ pub struct UpdateInfo {
 #[derive(Debug, Deserialize)]
 struct GhRelease {
     tag_name: String,
-    name: Option<String>,
     published_at: String,
     html_url: String,
     assets: Vec<GhAsset>,

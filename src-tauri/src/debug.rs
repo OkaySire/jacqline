@@ -141,7 +141,7 @@ fn find_latest_log(log_dir: &PathBuf) -> Option<PathBuf> {
             Some((modified, e.path()))
         })
         .collect();
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
     candidates.into_iter().next().map(|(_, p)| p)
 }
 
@@ -286,7 +286,7 @@ fn redact_secrets(s: &mut String) {
                 let value_start: usize = tail_start + rel_eq + 1;
                 // Value ends at the next separator (`;` Windows, `:` Unix) or EOS.
                 let value_end: usize = lower[value_start..]
-                    .find(|c: char| c == ';' || c == ':' || c == ' ')
+                    .find([';', ':', ' '])
                     .map(|p| value_start + p)
                     .unwrap_or(lower.len());
                 if value_end > value_start {
@@ -298,7 +298,7 @@ fn redact_secrets(s: &mut String) {
     }
 
     // Apply redactions from the back so indices stay valid.
-    redactions.sort_by(|a, b| b.0.cmp(&a.0));
+    redactions.sort_by_key(|r| std::cmp::Reverse(r.0));
     for (start, end) in redactions {
         if start <= s.len() && end <= s.len() && start < end {
             s.replace_range(start..end, "[redacted]");

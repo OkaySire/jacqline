@@ -48,7 +48,23 @@ fn install_panic_hook() {
             .copied()
             .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
             .unwrap_or("<non-string panic payload>");
-        tracing::error!(location = %location, payload = %payload, "rust panic");
+
+        // tao's Windows event loop occasionally panics on shutdown
+        // (`cannot move state from Destroyed` in `tao-*/.../runner.rs`).
+        // It's harmless — fires after the user closed the window — but
+        // it lights up the log file in red. Demote to debug.
+        let is_tao_shutdown: bool = location.contains("tao-")
+            && location.contains("runner.rs")
+            && payload.contains("cannot move state from Destroyed");
+        if is_tao_shutdown {
+            tracing::debug!(
+                %location,
+                payload = %payload,
+                "tao shutdown panic (harmless, filtered)",
+            );
+        } else {
+            tracing::error!(%location, payload = %payload, "rust panic");
+        }
         default_hook(info);
     }));
 }

@@ -3,9 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 export interface UpdateInfo {
   readonly tag: string;
   readonly currentVersion: string;
+  readonly currentSha: string;
+  readonly releaseSha: string;
+  readonly lastSeenSha: string | null;
   readonly publishedAt: string;
   readonly publishedAtMs: number;
-  readonly lastSeenPublishedAtMs: number | null;
   readonly downloadUrl: string;
   readonly downloadFilename: string;
   readonly sha256Url: string;
@@ -34,7 +36,7 @@ export async function updaterDownload(info: UpdateInfo): Promise<DownloadedUpdat
     downloadUrl: info.downloadUrl,
     sha256Url: info.sha256Url,
     downloadFilename: info.downloadFilename,
-    publishedAtMs: info.publishedAtMs,
+    releaseSha: info.releaseSha,
   });
 }
 

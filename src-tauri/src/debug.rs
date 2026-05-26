@@ -20,7 +20,8 @@ use crate::error::{AppError, AppResult};
 const RECENT_LOG_LINES: usize = 100;
 const RECENT_SESSION_EXITS: usize = 5;
 const PATH_PREVIEW_BYTES: usize = 500;
-const SETTING_LAST_SEEN_PUBLISHED_AT: &str = "updater.last_seen_published_at";
+const SETTING_LAST_SEEN_SHA: &str = "updater.last_seen_sha";
+const CURRENT_SHA: &str = env!("JACQLINE_GIT_SHA");
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,7 +72,8 @@ pub struct RecentExit {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdaterState {
-    pub last_seen_published_at_ms: Option<i64>,
+    pub current_sha: String,
+    pub last_seen_sha: Option<String>,
 }
 
 #[tauri::command]
@@ -93,11 +95,11 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
         Vec::new()
     };
 
-    let (db_stats, recent_exits, last_seen_ms) = {
+    let (db_stats, recent_exits, last_seen_sha) = {
         let conn = db.lock()?;
         let stats: DbStats = collect_db_stats(&conn)?;
         let exits: Vec<RecentExit> = collect_recent_exits(&conn)?;
-        let last_seen: Option<i64> = read_last_seen_published_at(&conn)?;
+        let last_seen: Option<String> = read_last_seen_sha(&conn)?;
         (stats, exits, last_seen)
     };
 
@@ -115,7 +117,8 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
         db_stats,
         recent_session_exits: recent_exits,
         updater: UpdaterState {
-            last_seen_published_at_ms: last_seen_ms,
+            current_sha: CURRENT_SHA.to_owned(),
+            last_seen_sha,
         },
         path_preview,
         recent_logs,
@@ -213,14 +216,14 @@ fn collect_recent_exits(conn: &rusqlite::Connection) -> AppResult<Vec<RecentExit
     Ok(out)
 }
 
-fn read_last_seen_published_at(conn: &rusqlite::Connection) -> AppResult<Option<i64>> {
+fn read_last_seen_sha(conn: &rusqlite::Connection) -> AppResult<Option<String>> {
     let result: rusqlite::Result<String> = conn.query_row(
         "SELECT value FROM settings WHERE key = ?1",
-        [SETTING_LAST_SEEN_PUBLISHED_AT],
+        [SETTING_LAST_SEEN_SHA],
         |row| row.get(0),
     );
     match result {
-        Ok(s) => Ok(s.parse::<i64>().ok()),
+        Ok(s) => Ok(Some(s)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(AppError::from(e)),
     }

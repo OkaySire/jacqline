@@ -24,23 +24,31 @@ const NIGHTLY_TAG: &str = "nightly";
 const REPO_OWNER: &str = "OkaySire";
 const REPO_NAME: &str = "jacqline";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
-const SETTING_LAST_SEEN_PUBLISHED_AT: &str = "updater.last_seen_published_at";
+/// SHA of the running binary's commit, injected by build.rs from
+/// `$GITHUB_SHA` (CI) or `git rev-parse HEAD` (dev). Falls back to
+/// "unknown" — see build.rs.
+const CURRENT_SHA: &str = env!("JACQLINE_GIT_SHA");
+const SETTING_LAST_SEEN_SHA: &str = "updater.last_seen_sha";
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     pub tag: String,
     pub current_version: String,
+    pub current_sha: String,
+    pub release_sha: String,
+    pub last_seen_sha: Option<String>,
     pub published_at: String,
     pub published_at_ms: i64,
-    pub last_seen_published_at_ms: Option<i64>,
     pub download_url: String,
     pub download_filename: String,
     pub sha256_url: String,
     pub size_bytes: u64,
     pub html_url: String,
-    /// `true` when `published_at` is newer than the last update we offered
-    /// (or when the user has never installed an update via the in-app flow).
+    /// `true` when the release's `target_commitish` differs from the running
+    /// binary's `CURRENT_SHA`. `published_at` can't be trusted because GitHub
+    /// won't refresh it on `gh release edit` — it stays frozen at the
+    /// release's initial creation timestamp.
     pub is_newer: bool,
 }
 
@@ -50,6 +58,10 @@ pub struct UpdateInfo {
 struct GhRelease {
     tag_name: String,
     published_at: String,
+    /// Set by the workflow via `gh release create --target $sha`. This is
+    /// the field we use to detect a new build — `published_at` is frozen
+    /// at creation time, so editing the release does not bump it.
+    target_commitish: Option<String>,
     html_url: String,
     assets: Vec<GhAsset>,
 }
@@ -103,26 +115,26 @@ fn parse_published_at_ms(input: &str) -> i64 {
     secs.saturating_mul(1000)
 }
 
-fn get_last_seen_ms(db: &DbState) -> AppResult<Option<i64>> {
+fn get_last_seen_sha(db: &DbState) -> AppResult<Option<String>> {
     let conn = db.lock()?;
     let value: rusqlite::Result<String> = conn.query_row(
         "SELECT value FROM settings WHERE key = ?1",
-        [SETTING_LAST_SEEN_PUBLISHED_AT],
+        [SETTING_LAST_SEEN_SHA],
         |row| row.get(0),
     );
     match value {
-        Ok(s) => Ok(s.parse::<i64>().ok()),
+        Ok(s) => Ok(Some(s)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(AppError::from(e)),
     }
 }
 
-fn set_last_seen_ms(db: &DbState, ms: i64) -> AppResult<()> {
+fn set_last_seen_sha(db: &DbState, sha: &str) -> AppResult<()> {
     let conn = db.lock()?;
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2) \
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        rusqlite::params![SETTING_LAST_SEEN_PUBLISHED_AT, ms.to_string()],
+        rusqlite::params![SETTING_LAST_SEEN_SHA, sha],
     )?;
     Ok(())
 }
@@ -172,17 +184,23 @@ pub async fn updater_check(db: State<'_, DbState>) -> AppResult<UpdateInfo> {
         .ok_or_else(|| AppError::Other("nightly release has no .sha256 sidecar yet".into()))?;
 
     let published_at_ms: i64 = parse_published_at_ms(&release.published_at);
-    let last_seen_ms: Option<i64> = get_last_seen_ms(&db)?;
-    let is_newer: bool = match last_seen_ms {
-        Some(seen) => published_at_ms > seen,
-        None => true,
-    };
+    let release_sha: String = release.target_commitish.clone().unwrap_or_default();
+    let last_seen_sha: Option<String> = get_last_seen_sha(&db)?;
+
+    // A release is "newer" iff it advertises a SHA that's neither empty nor
+    // the SHA we already shipped to the user. We deliberately do NOT compare
+    // against `last_seen_sha` for this — the user might have skipped a
+    // download — only against the running binary's SHA. `last_seen_sha` is
+    // tracked for diagnostics + so the snapshot panel can show progress.
+    let is_newer: bool =
+        !release_sha.is_empty() && release_sha != "unknown" && release_sha != CURRENT_SHA;
 
     tracing::info!(
         tag = %release.tag_name,
+        current_sha = %CURRENT_SHA,
+        release_sha = %release_sha,
+        last_seen_sha = ?last_seen_sha,
         published_at = %release.published_at,
-        published_at_ms,
-        last_seen_ms = ?last_seen_ms,
         is_newer,
         msi_size = msi.size,
         "updater check completed",
@@ -191,9 +209,11 @@ pub async fn updater_check(db: State<'_, DbState>) -> AppResult<UpdateInfo> {
     Ok(UpdateInfo {
         tag: release.tag_name,
         current_version: env!("CARGO_PKG_VERSION").to_owned(),
+        current_sha: CURRENT_SHA.to_owned(),
+        release_sha,
+        last_seen_sha,
         published_at: release.published_at,
         published_at_ms,
-        last_seen_published_at_ms: last_seen_ms,
         download_url: msi.browser_download_url.clone(),
         download_filename: msi.name.clone(),
         sha256_url: sidecar.browser_download_url.clone(),
@@ -218,7 +238,7 @@ pub async fn updater_download(
     download_url: String,
     sha256_url: String,
     download_filename: String,
-    published_at_ms: i64,
+    release_sha: String,
 ) -> AppResult<DownloadedUpdate> {
     eprintln!("[updater] download entered: {download_filename}");
     tracing::info!(filename = %download_filename, "updater_download entered");
@@ -313,11 +333,12 @@ pub async fn updater_download(
         )));
     }
 
-    set_last_seen_ms(&db, published_at_ms)?;
+    set_last_seen_sha(&db, &release_sha)?;
     tracing::info!(
         path = %local_path.display(),
         bytes = downloaded,
         sha256 = %actual,
+        release_sha = %release_sha,
         "update downloaded",
     );
 

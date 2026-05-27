@@ -14,6 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
+use crate::conpty_preload;
 use crate::db::DbState;
 use crate::error::{AppError, AppResult};
 
@@ -33,11 +34,20 @@ pub struct DebugSnapshot {
     pub log_path: String,
     pub os: OsInfo,
     pub wsl_distros: Vec<String>,
+    pub bundled_conpty: BundledConptyInfo,
     pub db_stats: DbStats,
     pub recent_session_exits: Vec<RecentExit>,
     pub updater: UpdaterState,
     pub path_preview: String,
     pub recent_logs: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundledConptyInfo {
+    pub loaded: bool,
+    pub dll_path: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +116,19 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
     let path_preview: String = preview_path();
     let recent_logs: Vec<String> = tail_log(&log_path, RECENT_LOG_LINES);
 
+    let bundled_conpty: BundledConptyInfo = match conpty_preload::bundled_state() {
+        Some(state) => BundledConptyInfo {
+            loaded: true,
+            dll_path: Some(state.dll_path.to_string_lossy().into_owned()),
+            version: state.version,
+        },
+        None => BundledConptyInfo {
+            loaded: false,
+            dll_path: None,
+            version: None,
+        },
+    };
+
     Ok(DebugSnapshot {
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
         timestamp_ms: now_millis(),
@@ -114,6 +137,7 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
         log_path: log_path.to_string_lossy().into_owned(),
         os,
         wsl_distros,
+        bundled_conpty,
         db_stats,
         recent_session_exits: recent_exits,
         updater: UpdaterState {

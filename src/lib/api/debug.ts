@@ -28,6 +28,12 @@ export interface UpdaterState {
   readonly lastSeenSha: string | null;
 }
 
+export interface BundledConptyInfo {
+  readonly loaded: boolean;
+  readonly dllPath: string | null;
+  readonly version: string | null;
+}
+
 export interface DebugSnapshot {
   readonly appVersion: string;
   readonly timestampMs: number;
@@ -36,6 +42,7 @@ export interface DebugSnapshot {
   readonly logPath: string;
   readonly os: OsInfo;
   readonly wslDistros: readonly string[];
+  readonly bundledConpty: BundledConptyInfo;
   readonly dbStats: DbStats;
   readonly recentSessionExits: readonly RecentExit[];
   readonly updater: UpdaterState;

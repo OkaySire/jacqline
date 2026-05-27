@@ -1,3 +1,4 @@
+mod conpty_preload;
 mod db;
 mod debug;
 mod error;
@@ -92,6 +93,15 @@ pub fn run() {
 
             install_panic_hook();
             tracing::info!(path = %log_dir.display(), "Jacqline starting");
+
+            // Preload our bundled ConPTY before anything touches portable-pty.
+            // No-op on non-Windows. Best-effort: missing DLL just falls back
+            // to the (broken) system ConPTY with a WARN in the log.
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                conpty_preload::preload(&resource_dir);
+            } else {
+                tracing::warn!("conpty preload skipped: resource_dir unavailable");
+            }
 
             let db_path = data_dir.join("jacqline.db");
             let db_state = db::DbState::new(&db_path)?;

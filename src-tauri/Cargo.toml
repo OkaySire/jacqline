@@ -57,6 +57,12 @@ sha2 = "0.10"
 hex = "0.4"
 futures-util = "0.3"
 
+[target.'cfg(windows)'.dependencies]
+# Used by `conpty_preload.rs` to `LoadLibraryW` the bundled conpty.dll before
+# the system ConPTY is touched. WSL interactive-PTY hangs caused by the
+# stale system ConPTY (microsoft/WSL#11465) are fixed by this preload.
+windows = { version = "0.59", features = ["Win32_System_LibraryLoader", "Win32_Foundation"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

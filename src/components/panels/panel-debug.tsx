@@ -163,6 +163,19 @@ function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
           </table>
         </Section>
       )}
+      <Section title="Bundled ConPTY">
+        <KV
+          label="Status"
+          value={snap.bundledConpty.loaded ? "loaded" : "not loaded (system fallback)"}
+          mono
+        />
+        {snap.bundledConpty.version !== null && (
+          <KV label="Version" value={snap.bundledConpty.version} mono />
+        )}
+        {snap.bundledConpty.dllPath !== null && (
+          <KV label="DLL path" value={snap.bundledConpty.dllPath} mono small />
+        )}
+      </Section>
       <Section title="Updater">
         <KV label="Current SHA" value={snap.updater.currentSha} mono small />
         <KV label="Last installed SHA" value={snap.updater.lastSeenSha ?? "(never)"} mono small />
@@ -285,6 +298,15 @@ function formatMarkdown(snap: DebugSnapshot): string {
       const ended: string = row.endedAt !== null ? new Date(row.endedAt).toISOString() : "—";
       lines.push(`| ${row.name} | ${row.status} | ${ended} |`);
     }
+  }
+  lines.push("");
+  lines.push("## Bundled ConPTY");
+  lines.push(`- Status: ${snap.bundledConpty.loaded ? "loaded" : "not loaded (system fallback)"}`);
+  if (snap.bundledConpty.version !== null) {
+    lines.push(`- Version: \`${snap.bundledConpty.version}\``);
+  }
+  if (snap.bundledConpty.dllPath !== null) {
+    lines.push(`- DLL path: \`${snap.bundledConpty.dllPath}\``);
   }
   lines.push("");
   lines.push("## Updater");

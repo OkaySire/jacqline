@@ -108,6 +108,12 @@ pub fn run() {
             app.manage(db_state);
             app.manage(pty::PtyManager::new());
             tracing::info!(path = %db_path.display(), "db initialized");
+
+            // Nothing owns yesterday's per-session .sh scripts — the
+            // PtyManager is in-memory only, so anything on disk now is
+            // an orphan from a previous (possibly crashed) run.
+            pty::cleanup_orphan_session_scripts(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

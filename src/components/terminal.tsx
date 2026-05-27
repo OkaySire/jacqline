@@ -73,6 +73,13 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
     if (host === null) {
       return;
     }
+    // xterm.js fires `term.onData` for both user keystrokes AND internal
+    // control sequences (focus-report `\x1b[?1004h` / `\x1b[I` / `\x1b[O`,
+    // device-attributes replies, etc.). When the PTY has already exited
+    // those writes hit the Rust `pty_write` command with a stale session
+    // id and bubble up an uncaught "session not found" rejection — pure
+    // noise. Track exit locally and skip writes after exit.
+    let sessionExited: boolean = false;
 
     const term = new XTermTerminal({
       theme: JACQLINE_THEME,
@@ -103,7 +110,27 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
 
     const encoder = new TextEncoder();
     const dataDisposable = term.onData((data: string): void => {
-      void ptyWrite(sessionId, encoder.encode(data));
+      if (sessionExited) {
+        return;
+      }
+      ptyWrite(sessionId, encoder.encode(data)).catch((err: unknown) => {
+        // Once the wait task on the Rust side fires `pty:exit`, the
+        // session is gone but xterm may still emit one more sequence
+        // (focus-out report, etc.) before our exit handler runs. Swallow
+        // the rejection silently — it would otherwise surface as an
+        // uncaught "session not found" in DevTools and pollute the
+        // console ring buffer.
+        if (
+          err !== null &&
+          typeof err === "object" &&
+          "message" in err &&
+          typeof err.message === "string" &&
+          err.message.includes("not found")
+        ) {
+          return;
+        }
+        console.warn(`[pty ${sessionId.slice(0, 8)}] pty_write failed`, err);
+      });
     });
     const resizeDisposable = term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
       void ptyResize(sessionId, cols, rows);
@@ -135,6 +162,7 @@ export function Terminal({ sessionId, hidden = false }: TerminalProps) {
         `pty:exit:${sessionId}`,
         (event) => {
           console.log(`[pty ${sessionTag}] exit`, event.payload);
+          sessionExited = true;
           handleExit(sessionId, event.payload.code);
         },
       );

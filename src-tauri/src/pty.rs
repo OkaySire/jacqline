@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use rusqlite::Connection;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 
@@ -31,6 +31,27 @@ struct PtyHandle {
     meta: SessionMeta,
     master: Box<dyn MasterPty + Send>,
     write_tx: UnboundedSender<Vec<u8>>,
+    /// Set when we wrote a temp `.sh` to pass the claude preamble across
+    /// the Rust → wsl.exe → bash chain (see [`prepare_wsl_script`]).
+    /// Cleaned up on Drop — fire-and-forget; we don't care if the file is
+    /// already gone or the FS is in a weird state on shutdown.
+    script_path: Option<std::path::PathBuf>,
+}
+
+impl Drop for PtyHandle {
+    fn drop(&mut self) {
+        if let Some(path) = self.script_path.take() {
+            if let Err(err) = std::fs::remove_file(&path) {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    tracing::debug!(
+                        path = %path.display(),
+                        %err,
+                        "session script cleanup failed (ignored)",
+                    );
+                }
+            }
+        }
+    }
 }
 
 // ----- manager --------------------------------------------------------------
@@ -92,24 +113,39 @@ impl PtyManager {
 
 // ----- spawn helpers --------------------------------------------------------
 
-/// Shell-script preamble we inject before `claude` for POSIX shells
-/// (bash / zsh / WSL bash).
+/// Real claude preamble for POSIX shells.
 ///
-/// **Currently in DIAGNOSTIC MODE (option C from the bug brief):** the
-/// real preamble exited with `0xC000013A` (STATUS_CONTROL_C_EXIT) within
-/// milliseconds, with no `printf` output ever reaching the frontend —
-/// strongly suggesting the long `-c` arg is being mangled somewhere in
-/// the Rust → wsl.exe → bash chain (single quotes, double quotes, `;`,
-/// `||`, octal escapes, multibyte UTF-8 in one big arg = quoting
-/// minefield).
+/// Native bash / zsh on Linux + macOS get this via `bash -l -i -c <preamble>`.
+/// The `wsl.exe → bash` chain mangles long single-arg quoting (confirmed by
+/// the diagnostic probe in PR #34), so WSL goes through a temp `.sh` file
+/// instead (see [`CLAUDE_BASH_SCRIPT`] + [`prepare_wsl_script`]).
 ///
-/// This minimal preamble proves the chain: if we see `HELLO_FROM_PREAMBLE`
-/// followed (5 s later) by `DONE` then the shell-exec path is healthy
-/// and the bug is in `claude` itself, not the quoting. If `HELLO` never
-/// shows up we've confirmed the quoting hypothesis and the next step is
-/// to write the preamble to a temp `.sh` file (option A) and run
-/// `bash /path/to/file.sh` instead.
-const POSIX_CLAUDE_PREAMBLE: &str = "echo HELLO_FROM_PREAMBLE; sleep 5; echo DONE; exec bash -i";
+/// Octal escapes (`\033`) are interpreted by bash's `printf`, not the Rust
+/// literal — every backslash is doubled in source.
+const POSIX_CLAUDE_PREAMBLE: &str = "\
+    printf '\\033[36m> jacqline: spawning claude...\\033[0m\\r\\n'; \
+    type -p claude || printf '\\033[33m\\xe2\\x9a\\xa0 claude not found in PATH\\033[0m\\r\\n'; \
+    printf 'PATH: %s\\r\\n' \"$PATH\"; \
+    claude; rc=$?; \
+    printf '\\033[31m< claude exited with %d\\033[0m\\r\\n' \"$rc\"; \
+    exec bash -i\
+";
+
+/// Multi-line, file-friendly version of [`POSIX_CLAUDE_PREAMBLE`]. Written
+/// to disk on the host side, then run inside WSL as
+/// `bash -l -i /mnt/c/.../<sessionId>.sh` — that way the entire script
+/// content travels as a single file path rather than getting flattened
+/// through Windows / wsl.exe arg-parsing rules. Same bash semantics; the
+/// shebang line is a comment when bash is invoked explicitly.
+const CLAUDE_BASH_SCRIPT: &str = r#"#!/usr/bin/env bash
+printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
+type -p claude || printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
+printf 'PATH: %s\r\n' "$PATH"
+claude
+rc=$?
+printf '\033[31m< claude exited with %d\033[0m\r\n' "$rc"
+exec bash -i
+"#;
 
 /// PowerShell equivalent of [`POSIX_CLAUDE_PREAMBLE`]. Relies on `-NoExit`
 /// at the launcher level to keep the shell alive after `claude` returns.
@@ -133,7 +169,74 @@ const CMD_CLAUDE_PREAMBLE: &str = "\
     claude & echo ^< claude exited with %ERRORLEVEL%\
 ";
 
-fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
+/// Write the claude preamble to `<app_local_data_dir>/sessions/<sessionId>.sh`
+/// on the host filesystem. Returns the absolute host path; cleanup is the
+/// caller's responsibility (it's stashed in [`PtyHandle::script_path`] and
+/// removed on Drop).
+///
+/// The script is plain UTF-8 text — no chmod needed because we invoke
+/// `bash <path>` explicitly inside WSL, bypassing the executable bit
+/// check.
+fn prepare_wsl_script(app: &AppHandle, session_id: &str) -> AppResult<std::path::PathBuf> {
+    let dir: std::path::PathBuf = app.path().app_local_data_dir()?.join("sessions");
+    std::fs::create_dir_all(&dir)?;
+    let path: std::path::PathBuf = dir.join(format!("{session_id}.sh"));
+    std::fs::write(&path, CLAUDE_BASH_SCRIPT)?;
+    Ok(path)
+}
+
+/// Translate `C:\Users\X\AppData\Local\jacqline\sessions\x.sh` into
+/// `/mnt/c/Users/X/AppData/Local/jacqline/sessions/x.sh`. The wsl.exe
+/// translator does this for arguments coming through `--` but we want
+/// the resolved path explicit in the spawn arg list so it shows up in
+/// the rolling log as-is.
+fn windows_to_wsl_path(path: &std::path::Path) -> Option<String> {
+    let s: std::borrow::Cow<'_, str> = path.to_string_lossy();
+    let bytes: &[u8] = s.as_bytes();
+    if bytes.len() < 3 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' {
+        return None;
+    }
+    let drive: char = (bytes[0] as char).to_ascii_lowercase();
+    let rest: String = String::from_utf8_lossy(&bytes[2..]).replace('\\', "/");
+    Some(format!("/mnt/{drive}{rest}"))
+}
+
+/// Best-effort cleanup of orphaned session scripts from previous app runs.
+/// Called from `setup()` on app startup. Removes every `.sh` under
+/// `<app_local_data_dir>/sessions/` — at that point the PtyManager is
+/// empty (in-memory state didn't survive the restart) so no live session
+/// can own one of these files.
+pub fn cleanup_orphan_session_scripts(app: &AppHandle) {
+    let dir: std::path::PathBuf = match app.path().app_local_data_dir() {
+        Ok(d) => d.join("sessions"),
+        Err(_) => return,
+    };
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let mut removed: usize = 0;
+    for entry in entries.flatten() {
+        let p: std::path::PathBuf = entry.path();
+        if p.extension().and_then(|s| s.to_str()) == Some("sh") && std::fs::remove_file(&p).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        tracing::info!(
+            dir = %dir.display(),
+            removed,
+            "cleaned orphan session scripts at startup",
+        );
+    }
+}
+
+fn build_command(
+    project: &Project,
+    with_claude: bool,
+    wsl_script_path: Option<&str>,
+) -> CommandBuilder {
     let mut cmd: CommandBuilder = match project.shell_kind {
         ShellKind::Native => {
             let shell: &str = project.shell_value.as_str();
@@ -183,7 +286,14 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash -l -i -c <preamble>
+            // wsl.exe -d <distro> --cd <cwd> -- bash -l -i /mnt/c/.../<id>.sh
+            //
+            // We pass the preamble via a temp `.sh` file on the host
+            // filesystem (accessed through /mnt/c/) instead of inline
+            // `-c '<preamble>'` because the Windows → wsl.exe → bash
+            // chain mangles long single-arg quoting — `;`, `||`, octal
+            // escapes, multibyte UTF-8 inside one arg = bash exits with
+            // 0xC000013A before running anything (PR #34 diagnostic).
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
@@ -194,8 +304,12 @@ fn build_command(project: &Project, with_claude: bool) -> CommandBuilder {
             c.arg("-l");
             c.arg("-i");
             if with_claude {
-                c.arg("-c");
-                c.arg(POSIX_CLAUDE_PREAMBLE);
+                if let Some(script) = wsl_script_path {
+                    c.arg(script);
+                }
+                // If with_claude is true but no script_path was prepared
+                // (filesystem error upstream — already logged), we still
+                // hand the user an interactive bash so they can recover.
             }
             c
         }
@@ -222,6 +336,11 @@ struct SpawnedPty {
     pid: u32,
     master: Box<dyn MasterPty + Send>,
     write_tx: UnboundedSender<Vec<u8>>,
+    /// Host-side path of the per-session `.sh` we wrote to bypass the
+    /// wsl.exe quoting issue. `None` for non-WSL sessions and for sessions
+    /// where `with_claude=false`. Stored on the [`PtyHandle`] so its
+    /// `Drop` impl can clean the file up.
+    script_path: Option<std::path::PathBuf>,
 }
 
 /// Open a fresh PTY for `project`, spawn the provider command inside it, and
@@ -245,7 +364,25 @@ fn spawn_pty_tasks(
         })
         .map_err(|e| AppError::Pty(format!("openpty failed: {e}")))?;
 
-    let cmd: CommandBuilder = build_command(project, with_claude);
+    let script_path: Option<std::path::PathBuf> =
+        if matches!(project.shell_kind, ShellKind::Wsl) && with_claude {
+            match prepare_wsl_script(&app, session_id) {
+                Ok(p) => Some(p),
+                Err(err) => {
+                    tracing::warn!(
+                        session = %session_id,
+                        %err,
+                        "prepare_wsl_script failed — spawning bare shell",
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+    let wsl_script_arg: Option<String> = script_path.as_deref().and_then(windows_to_wsl_path);
+
+    let cmd: CommandBuilder = build_command(project, with_claude, wsl_script_arg.as_deref());
     let mut child = pair
         .slave
         .spawn_command(cmd)
@@ -387,6 +524,7 @@ fn spawn_pty_tasks(
         pid,
         master: pair.master,
         write_tx,
+        script_path,
     })
 }
 
@@ -437,6 +575,7 @@ pub async fn session_create(
         meta: meta.clone(),
         master: spawned.master,
         write_tx: spawned.write_tx,
+        script_path: spawned.script_path,
     })?;
 
     tracing::info!(
@@ -498,6 +637,7 @@ pub async fn session_restart(
         meta: meta.clone(),
         master: spawned.master,
         write_tx: spawned.write_tx,
+        script_path: spawned.script_path,
     })?;
 
     tracing::info!(

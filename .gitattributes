@@ -16,3 +16,5 @@
 *.otf    binary
 *.pdf    binary
 *.lockb  binary
+*.exe    binary
+*.dll    binary

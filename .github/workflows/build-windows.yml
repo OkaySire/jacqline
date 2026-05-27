@@ -53,6 +53,26 @@ jobs:
       - name: Install JS dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify bundled ConPTY checksums
+        shell: pwsh
+        # Fails the build if the committed conpty.dll / OpenConsole.exe
+        # have been swapped without updating checksums.txt — protects us
+        # from accidentally shipping a tampered or stale ConPTY.
+        run: |
+          Set-Location src-tauri/binaries/conpty/x64
+          $expected = Get-Content checksums.txt
+          foreach ($line in $expected) {
+            if ($line -match '^([0-9a-f]{64})\s+(.+)$') {
+              $hash = $matches[1]
+              $name = $matches[2].Trim()
+              $actual = (Get-FileHash -Algorithm SHA256 $name).Hash.ToLower()
+              if ($actual -ne $hash) {
+                throw "Checksum mismatch for $name : expected $hash, got $actual"
+              }
+              Write-Host "OK $name"
+            }
+          }
+
       - name: Tauri build (release + bundle)
         run: bun run tauri build
 

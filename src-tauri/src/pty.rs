@@ -40,16 +40,15 @@ struct PtyHandle {
 
 impl Drop for PtyHandle {
     fn drop(&mut self) {
-        if let Some(path) = self.script_path.take() {
-            if let Err(err) = std::fs::remove_file(&path) {
-                if err.kind() != std::io::ErrorKind::NotFound {
-                    tracing::debug!(
-                        path = %path.display(),
-                        %err,
-                        "session script cleanup failed (ignored)",
-                    );
-                }
-            }
+        if let Some(path) = self.script_path.take()
+            && let Err(err) = std::fs::remove_file(&path)
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::debug!(
+                path = %path.display(),
+                %err,
+                "session script cleanup failed (ignored)",
+            );
         }
     }
 }
@@ -303,13 +302,11 @@ fn build_command(
             c.arg("bash");
             c.arg("-l");
             c.arg("-i");
-            if with_claude {
-                if let Some(script) = wsl_script_path {
-                    c.arg(script);
-                }
-                // If with_claude is true but no script_path was prepared
-                // (filesystem error upstream — already logged), we still
-                // hand the user an interactive bash so they can recover.
+            // If with_claude is true but no script_path was prepared
+            // (filesystem error upstream — already logged), we still hand
+            // the user an interactive bash so they can recover.
+            if with_claude && let Some(script) = wsl_script_path {
+                c.arg(script);
             }
             c
         }

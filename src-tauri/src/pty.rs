@@ -132,16 +132,38 @@ const POSIX_CLAUDE_PREAMBLE: &str = "\
 
 /// Multi-line, file-friendly version of [`POSIX_CLAUDE_PREAMBLE`]. Written
 /// to disk on the host side, then run inside WSL as
-/// `bash -l -i /mnt/c/.../<sessionId>.sh` — that way the entire script
-/// content travels as a single file path rather than getting flattened
-/// through Windows / wsl.exe arg-parsing rules. Same bash semantics; the
-/// shebang line is a comment when bash is invoked explicitly.
+/// `bash /mnt/c/.../<sessionId>.sh` (note: NO `-l -i`).
+///
+/// We deliberately do **not** ask bash to be login + interactive when
+/// running this script: users frequently put `exec zsh` (or `exec fish`,
+/// etc.) at the end of `.bash_profile`, and that `exec` replaces bash —
+/// the script arg is lost in the process replacement and the preamble
+/// never runs.
+///
+/// Skipping `-l -i` also skips auto-sourcing of `~/.profile` /
+/// `~/.bashrc`, so the user's PATH (nvm, asdf, brew, etc.) wouldn't be
+/// loaded. We source the common rc files manually below — silent
+/// failures are fine, the goal is best-effort coverage of where users
+/// normally put `claude` on their PATH.
+///
+/// `exec bash -i` at the end *will* honor the user's profile, so when
+/// claude exits the user drops into THEIR default shell (e.g. zsh via
+/// the same `exec zsh`). That's the right behavior — by the time
+/// claude has run, the user wants a familiar interactive shell.
 const CLAUDE_BASH_SCRIPT: &str = r#"#!/usr/bin/env bash
+# Load user PATH from common rc files. We're non-interactive on purpose
+# (see module doc on CLAUDE_BASH_SCRIPT), so we have to source manually.
+for rc in ~/.profile ~/.bash_profile ~/.bashrc ~/.zshenv ~/.zprofile; do
+  [ -f "$rc" ] && source "$rc" 2>/dev/null || true
+done
+
 printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
 type -p claude || printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
 printf 'PATH: %s\r\n' "$PATH"
+
 claude
 rc=$?
+
 printf '\033[31m< claude exited with %d\033[0m\r\n' "$rc"
 exec bash -i
 "#;
@@ -285,14 +307,24 @@ fn build_command(
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash -l -i /mnt/c/.../<id>.sh
+            // wsl.exe -d <distro> --cd <cwd> -- bash /mnt/c/.../<id>.sh
             //
-            // We pass the preamble via a temp `.sh` file on the host
-            // filesystem (accessed through /mnt/c/) instead of inline
-            // `-c '<preamble>'` because the Windows → wsl.exe → bash
-            // chain mangles long single-arg quoting — `;`, `||`, octal
-            // escapes, multibyte UTF-8 inside one arg = bash exits with
-            // 0xC000013A before running anything (PR #34 diagnostic).
+            // We pass the preamble via a temp `.sh` file (accessed through
+            // /mnt/c/) instead of inline `-c '<preamble>'` because the
+            // Windows → wsl.exe → bash chain mangles long single-arg
+            // quoting — `;`, `||`, octal escapes, multibyte UTF-8 inside
+            // one arg = bash exits with 0xC000013A before running
+            // anything (PR #34 diagnostic, PR #36 fix).
+            //
+            // No `-l -i` on the spawn: users commonly chain `exec zsh`
+            // (or fish, etc.) at the end of `.bash_profile`, and that
+            // `exec` replaces bash before our script arg ever runs. The
+            // script sources the common rc files itself so PATH is still
+            // populated (see CLAUDE_BASH_SCRIPT doc).
+            //
+            // With `with_claude=false` we have no script to pass — fall
+            // back to a plain interactive shell so the user can still
+            // type commands.
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
@@ -300,13 +332,11 @@ fn build_command(
             c.arg(&project.cwd);
             c.arg("--");
             c.arg("bash");
-            c.arg("-l");
-            c.arg("-i");
-            // If with_claude is true but no script_path was prepared
-            // (filesystem error upstream — already logged), we still hand
-            // the user an interactive bash so they can recover.
             if with_claude && let Some(script) = wsl_script_path {
                 c.arg(script);
+            } else {
+                c.arg("-l");
+                c.arg("-i");
             }
             c
         }

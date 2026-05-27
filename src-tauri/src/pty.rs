@@ -93,27 +93,23 @@ impl PtyManager {
 // ----- spawn helpers --------------------------------------------------------
 
 /// Shell-script preamble we inject before `claude` for POSIX shells
-/// (bash / zsh / WSL bash). The preamble:
+/// (bash / zsh / WSL bash).
 ///
-/// - prints a cyan heartbeat line so we can confirm PTY data is reaching
-///   the frontend even before claude itself produces output,
-/// - prints the resolved `claude` path (or a yellow warning if missing),
-/// - dumps `$PATH` so we can compare with what a vanilla terminal sees,
-/// - runs `claude`,
-/// - prints the exit code,
-/// - drops the user into an interactive bash so they can poke around if
-///   anything failed.
+/// **Currently in DIAGNOSTIC MODE (option C from the bug brief):** the
+/// real preamble exited with `0xC000013A` (STATUS_CONTROL_C_EXIT) within
+/// milliseconds, with no `printf` output ever reaching the frontend —
+/// strongly suggesting the long `-c` arg is being mangled somewhere in
+/// the Rust → wsl.exe → bash chain (single quotes, double quotes, `;`,
+/// `||`, octal escapes, multibyte UTF-8 in one big arg = quoting
+/// minefield).
 ///
-/// Octal escapes (`\033`) are interpreted by `printf`, not by the Rust
-/// string literal — that's why every backslash is doubled in source.
-const POSIX_CLAUDE_PREAMBLE: &str = "\
-    printf '\\033[36m> jacqline: spawning claude...\\033[0m\\r\\n'; \
-    type -p claude || printf '\\033[33m\\xe2\\x9a\\xa0 claude not found in PATH\\033[0m\\r\\n'; \
-    printf 'PATH: %s\\r\\n' \"$PATH\"; \
-    claude; rc=$?; \
-    printf '\\033[31m< claude exited with %d\\033[0m\\r\\n' \"$rc\"; \
-    exec bash -i\
-";
+/// This minimal preamble proves the chain: if we see `HELLO_FROM_PREAMBLE`
+/// followed (5 s later) by `DONE` then the shell-exec path is healthy
+/// and the bug is in `claude` itself, not the quoting. If `HELLO` never
+/// shows up we've confirmed the quoting hypothesis and the next step is
+/// to write the preamble to a temp `.sh` file (option A) and run
+/// `bash /path/to/file.sh` instead.
+const POSIX_CLAUDE_PREAMBLE: &str = "echo HELLO_FROM_PREAMBLE; sleep 5; echo DONE; exec bash -i";
 
 /// PowerShell equivalent of [`POSIX_CLAUDE_PREAMBLE`]. Relies on `-NoExit`
 /// at the launcher level to keep the shell alive after `claude` returns.

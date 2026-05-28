@@ -34,6 +34,20 @@ export interface BundledConptyInfo {
   readonly version: string | null;
 }
 
+export type ShellFamily = "posix" | "fish";
+
+export interface DetectedShell {
+  readonly path: string;
+  readonly family: ShellFamily;
+  readonly viaOverride: boolean;
+}
+
+export interface WslShellEntry {
+  readonly distro: string;
+  readonly detected: DetectedShell;
+  readonly overrideHint: string;
+}
+
 export interface DebugSnapshot {
   readonly appVersion: string;
   readonly timestampMs: number;
@@ -42,6 +56,7 @@ export interface DebugSnapshot {
   readonly logPath: string;
   readonly os: OsInfo;
   readonly wslDistros: readonly string[];
+  readonly wslShells: readonly WslShellEntry[];
   readonly bundledConpty: BundledConptyInfo;
   readonly dbStats: DbStats;
   readonly recentSessionExits: readonly RecentExit[];

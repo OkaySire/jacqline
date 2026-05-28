@@ -20,8 +20,12 @@ export function MainPane() {
   const clearExit = useSessionsStore((s) => s.clearExit);
   const activeSession: SessionMeta | null = useActiveSession(project?.id ?? null);
 
-  // On project switch: hydrate that project's sessions from SQL, then
-  // auto-spawn one if it has none live and didn't just crash.
+  // On project switch: hydrate that project's sessions from SQL. ONLY
+  // auto-spawn when the project has no sessions at all — once the user
+  // has any session (even stopped ones from a previous run), they get
+  // to choose explicitly when to spawn a new one via the sidebar's
+  // "Nouvelle session" button, and clicking an existing row just
+  // changes the active session without side-effects.
   useEffect(() => {
     if (project === null) {
       return;
@@ -34,7 +38,12 @@ export function MainPane() {
         console.error("loadProjectSessions failed", err);
         return;
       }
-      if (useSessionsStore.getState().lastExitByProject.has(projectId)) {
+      const state = useSessionsStore.getState();
+      if (state.lastExitByProject.has(projectId)) {
+        return;
+      }
+      const sessions = state.sessionsByProject.get(projectId) ?? [];
+      if (sessions.length > 0) {
         return;
       }
       try {
@@ -68,6 +77,8 @@ export function MainPane() {
   }
 
   const lastExit: SessionExitInfo | undefined = lastExitByProject.get(project.id);
+  const activeIsRunning: boolean = activeSession?.status === "running";
+  const activeIsStopped: boolean = activeSession?.status === "stopped";
 
   return (
     <section className="jq-content">
@@ -75,7 +86,10 @@ export function MainPane() {
         {runningSessions.map((session: SessionMeta) => (
           <div
             key={session.id}
-            className={cn("absolute inset-0", session.id !== activeSession?.id && "hidden")}
+            className={cn(
+              "absolute inset-0",
+              (!activeIsRunning || session.id !== activeSession?.id) && "hidden",
+            )}
           >
             <Terminal sessionId={session.id} />
           </div>
@@ -83,15 +97,35 @@ export function MainPane() {
 
         {activeSession === null && lastExit === undefined && <SpawningState />}
 
+        {activeIsStopped && activeSession !== null && (
+          <ExitedBanner
+            exit={{
+              sessionId: activeSession.id,
+              code: lastExit?.sessionId === activeSession.id ? lastExit.code : 0,
+            }}
+            onRestart={() => {
+              clearExit(project.id);
+              void restartSession(activeSession.id).catch((err: unknown) => {
+                console.error("restartSession failed", err);
+              });
+            }}
+            onOpenShell={() => {
+              clearExit(project.id);
+              void restartSession(activeSession.id, false).catch((err: unknown) => {
+                console.error("restartSession (shell) failed", err);
+                void createSession(project.id, "shell", false).catch((err2: unknown) => {
+                  console.error("createSession (shell fallback) failed", err2);
+                });
+              });
+            }}
+          />
+        )}
+
         {activeSession === null && lastExit !== undefined && (
           <ExitedBanner
             exit={lastExit}
             onRestart={() => {
               clearExit(project.id);
-              // Restart the failed session if we know which one it was, so
-              // the user keeps the same name + id. Falls back to
-              // ensureSession when the lastExit entry has been cleared
-              // already (rare race).
               void restartSession(lastExit.sessionId).catch((err: unknown) => {
                 console.error("restartSession failed", err);
                 void ensureSession(project.id).catch((err2: unknown) => {
@@ -101,13 +135,8 @@ export function MainPane() {
             }}
             onOpenShell={() => {
               clearExit(project.id);
-              // Re-spawn the same row but skip the `claude` invocation —
-              // gives the user a plain shell so they can debug why
-              // `claude` isn't on the PATH.
               void restartSession(lastExit.sessionId, false).catch((err: unknown) => {
                 console.error("restartSession (shell) failed", err);
-                // If the restart fails (e.g. row was deleted), fall back
-                // to a fresh shell-only session under a new id.
                 void createSession(project.id, "shell", false).catch((err2: unknown) => {
                   console.error("createSession (shell fallback) failed", err2);
                 });

@@ -308,9 +308,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 }));
 
 /**
- * Convenience selector for components that just want "the session the user
- * is looking at right now in this project." Returns `null` if the project
- * has no live session.
+ * "The session the user is looking at right now in this project" — any
+ * status. Resolution order:
+ *
+ *   1. The explicitly-selected `activeSessionByProject[projectId]`, even
+ *      if it's `stopped` (so clicking a stopped row in the sidebar puts
+ *      the user on the Restart banner for that exact session).
+ *   2. Failing that, the most-recently-started session for the project.
+ *   3. `null` only when the project has no sessions at all.
+ *
+ * Components branch on `.status` to decide what to render — Terminal vs.
+ * Restart banner.
  */
 export function useActiveSession(projectId: string | null): SessionMeta | null {
   return useSessionsStore((state: SessionsState): SessionMeta | null => {
@@ -318,7 +326,22 @@ export function useActiveSession(projectId: string | null): SessionMeta | null {
       return null;
     }
     const sessions: readonly SessionMeta[] = state.sessionsByProject.get(projectId) ?? [];
+    if (sessions.length === 0) {
+      return null;
+    }
     const activeId: string | undefined = state.activeSessionByProject.get(projectId);
-    return liveSessionFor(sessions, activeId);
+    if (activeId !== undefined) {
+      const found: SessionMeta | undefined = sessions.find((s: SessionMeta) => s.id === activeId);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+    let mostRecent: SessionMeta = sessions[0]!;
+    for (const s of sessions) {
+      if (s.startedAt > mostRecent.startedAt) {
+        mostRecent = s;
+      }
+    }
+    return mostRecent;
   });
 }

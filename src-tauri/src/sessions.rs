@@ -112,6 +112,19 @@ pub(crate) fn mark_stopped(conn: &Connection, id: &str, ended_at: i64) -> AppRes
     Ok(())
 }
 
+/// Reap every session left in `running` or `idle` after the previous app
+/// run. The PtyManager is in-memory only, so on startup nothing alive
+/// owns these rows — they're orphans from a crash / forced quit / OS
+/// shutdown. Returns the number of rows flipped to `stopped`.
+pub(crate) fn reap_orphans(conn: &Connection, ended_at: i64) -> AppResult<usize> {
+    let affected: usize = conn.execute(
+        "UPDATE sessions SET status = 'stopped', ended_at = ?1 \
+         WHERE status IN ('running', 'idle')",
+        params![ended_at],
+    )?;
+    Ok(affected)
+}
+
 /// Flip a stopped session back to running with a fresh pid + start timestamp.
 /// Used by `pty::session_restart`.
 pub(crate) fn mark_running(

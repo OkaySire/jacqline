@@ -106,6 +106,20 @@ pub fn run() {
 
             let db_path = data_dir.join("jacqline.db");
             let db_state = db::DbState::new(&db_path)?;
+
+            // Reap orphan sessions from the previous run — the PtyManager
+            // is in-memory only, so any row still marked `running` /
+            // `idle` at startup is guaranteed dead.
+            {
+                let conn = db_state.lock()?;
+                let now: i64 = db::now_millis();
+                match sessions::reap_orphans(&conn, now) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(reaped = n, "reaped orphan sessions at startup"),
+                    Err(err) => tracing::warn!(%err, "reap_orphans failed"),
+                }
+            }
+
             app.manage(db_state);
             app.manage(pty::PtyManager::new());
             app.manage(wsl_shell::WslShellCache::new());

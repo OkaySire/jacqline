@@ -13,6 +13,7 @@ use crate::db::{DbState, now_millis};
 use crate::error::{AppError, AppResult};
 use crate::project::{self, Project, ShellKind};
 use crate::sessions::{self, SessionMeta, SessionStatus};
+use crate::wsl_shell::{DetectedShell, ShellFamily, WslShellCache};
 
 const READ_BUFFER_BYTES: usize = 4096;
 const DEFAULT_COLS: u16 = 80;
@@ -130,75 +131,17 @@ const POSIX_CLAUDE_PREAMBLE: &str = "\
     exec bash -i\
 ";
 
-/// Multi-line, file-friendly version of [`POSIX_CLAUDE_PREAMBLE`]. Written
-/// to disk on the host side, then run inside WSL as
-/// `bash --norc --noprofile /mnt/c/.../<sessionId>.sh`.
+/// File-friendly preamble for POSIX shells (bash / zsh / dash / sh / ksh).
+/// Written to disk and run as `<detected_shell> -l -i /mnt/c/.../<id>.sh`.
 ///
-/// We bypass profile/rc sourcing on *every* layer — bash spawn flags AND
-/// inside the script — because users routinely put `exec zsh` (or
-/// `exec fish`, etc.) at the end of `.bash_profile`. Any path that
-/// sources such a file would replace the running bash mid-script and the
-/// rest of the preamble (cyan heartbeat, `claude`, exit-code line) would
-/// never run. PR #37 hit exactly that.
-///
-/// Instead we rebuild PATH explicitly from the common dev-tool bin dirs,
-/// then source only the *safe* version-manager init scripts (nvm/asdf)
-/// which define functions + tweak PATH but never `exec`.
-///
-/// The final `exec "${SHELL:-/bin/bash}" -i` drops the user into THEIR
-/// preferred shell after claude exits — zsh / fish / whatever they set
-/// `$SHELL` to. By then they want their familiar interactive setup, with
-/// rc files and all.
-const CLAUDE_BASH_SCRIPT: &str = r#"#!/usr/bin/env bash
-# Build PATH from known dev-tool locations. We intentionally avoid
-# sourcing ~/.profile / ~/.bash_profile / ~/.bashrc because those files
-# commonly end with `exec zsh` (or similar), which would replace bash
-# mid-script and the preamble below would never run.
-for dir in \
-  "$HOME/.local/bin" \
-  "$HOME/.cargo/bin" \
-  "$HOME/.bun/bin" \
-  "$HOME/.deno/bin" \
-  "$HOME/go/bin" \
-  "$HOME/.npm-global/bin" \
-  "/usr/local/bin" \
-  "/opt/homebrew/bin"; do
-  [ -d "$dir" ] && PATH="$dir:$PATH"
-done
-
-# Version managers. These init scripts only define functions / tweak
-# PATH, they don't `exec`, so they're safe to source here.
-#
-# After sourcing nvm we must also activate a version — `nvm use default`
-# is what the user's interactive shell does on startup. Without it,
-# `node` (and globally-installed CLIs like `claude`) resolve to whichever
-# version happens to be first in PATH, which can lag behind by months.
-if [ -s "$HOME/.nvm/nvm.sh" ]; then
-  . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
-  nvm use default --silent >/dev/null 2>&1 \
-    || nvm use node --silent >/dev/null 2>&1 \
-    || true
-fi
-[ -s "$HOME/.asdf/asdf.sh" ] && . "$HOME/.asdf/asdf.sh" >/dev/null 2>&1
-
-# Fallbacks for the case where nvm.sh wasn't found / `nvm use` failed:
-# 1. Read the version recorded in ~/.nvm/alias/default and prepend its bin.
-# 2. As a last resort, prepend the first installed node bin so a
-#    globally-installed `claude` is at least reachable.
-if [ -f "$HOME/.nvm/alias/default" ]; then
-  nvm_default_version=$(cat "$HOME/.nvm/alias/default" 2>/dev/null)
-  nvm_default_bin="$HOME/.nvm/versions/node/v${nvm_default_version}/bin"
-  [ -d "$nvm_default_bin" ] && PATH="$nvm_default_bin:$PATH"
-fi
-if ! type -p node >/dev/null 2>&1; then
-  for node_bin in "$HOME"/.nvm/versions/node/*/bin; do
-    [ -d "$node_bin" ] && PATH="$node_bin:$PATH" && break
-  done
-fi
-export PATH
-
+/// Because we now spawn the user's *actual* login shell with `-l -i`
+/// (see [`crate::wsl_shell`]), rc files are sourced natively —
+/// `.zshrc` / `.bash_profile` / wherever they put their nvm / asdf /
+/// fnm / volta / mise / nodenv setup. No more manual PATH rebuild, no
+/// more `nvm use default` shimming, no more first-bin-wins glob.
+const POSIX_CLAUDE_SCRIPT: &str = r#"#!/bin/sh
 printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
-type -p claude || printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
+command -v claude >/dev/null 2>&1 || printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
 printf 'PATH: %s\r\n' "$PATH"
 
 claude
@@ -206,9 +149,31 @@ rc=$?
 
 printf '\033[31m< claude exited with %d\033[0m\r\n' "$rc"
 
-# Drop into the user's preferred shell — they expect zsh / fish / etc.
-# after claude is done, not the bare bash we used for the preamble.
-exec "${SHELL:-/bin/bash}" -i
+# Drop into the user's preferred shell — by now claude is done and they
+# expect zsh / bash / whatever $SHELL is.
+exec "${SHELL:-/bin/sh}" -i
+"#;
+
+/// fish-syntax port of [`POSIX_CLAUDE_SCRIPT`]. fish has its own control
+/// flow keywords (`; or` instead of `||`), variable names (`$status`
+/// instead of `$?`), and no `${VAR:-default}` expansion. Same visible
+/// behavior.
+const FISH_CLAUDE_SCRIPT: &str = r#"#!/usr/bin/env fish
+printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
+command -v claude >/dev/null 2>&1; or printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
+printf 'PATH: %s\r\n' "$PATH"
+
+claude
+set rc $status
+
+printf '\033[31m< claude exited with %d\033[0m\r\n' $rc
+
+# Drop into the user's preferred shell after claude is done.
+if set -q SHELL
+    exec $SHELL -i
+else
+    exec fish -i
+end
 "#;
 
 /// PowerShell equivalent of [`POSIX_CLAUDE_PREAMBLE`]. Relies on `-NoExit`
@@ -233,19 +198,30 @@ const CMD_CLAUDE_PREAMBLE: &str = "\
     claude & echo ^< claude exited with %ERRORLEVEL%\
 ";
 
-/// Write the claude preamble to `<app_local_data_dir>/sessions/<sessionId>.sh`
-/// on the host filesystem. Returns the absolute host path; cleanup is the
-/// caller's responsibility (it's stashed in [`PtyHandle::script_path`] and
-/// removed on Drop).
+/// Write the claude preamble to
+/// `<app_local_data_dir>/sessions/<sessionId>.<ext>` on the host filesystem.
+/// `<ext>` and contents depend on the shell family — POSIX shells get
+/// `.sh`, fish gets `.fish`.
+///
+/// Returns the absolute host path; cleanup is the caller's responsibility
+/// (it's stashed in [`PtyHandle::script_path`] and removed on Drop).
 ///
 /// The script is plain UTF-8 text — no chmod needed because we invoke
-/// `bash <path>` explicitly inside WSL, bypassing the executable bit
+/// `<shell> <path>` explicitly inside WSL, bypassing the executable bit
 /// check.
-fn prepare_wsl_script(app: &AppHandle, session_id: &str) -> AppResult<std::path::PathBuf> {
+fn prepare_wsl_script(
+    app: &AppHandle,
+    session_id: &str,
+    family: ShellFamily,
+) -> AppResult<std::path::PathBuf> {
     let dir: std::path::PathBuf = app.path().app_local_data_dir()?.join("sessions");
     std::fs::create_dir_all(&dir)?;
-    let path: std::path::PathBuf = dir.join(format!("{session_id}.sh"));
-    std::fs::write(&path, CLAUDE_BASH_SCRIPT)?;
+    let (ext, content): (&str, &str) = match family {
+        ShellFamily::Posix => ("sh", POSIX_CLAUDE_SCRIPT),
+        ShellFamily::Fish => ("fish", FISH_CLAUDE_SCRIPT),
+    };
+    let path: std::path::PathBuf = dir.join(format!("{session_id}.{ext}"));
+    std::fs::write(&path, content)?;
     Ok(path)
 }
 
@@ -266,10 +242,10 @@ fn windows_to_wsl_path(path: &std::path::Path) -> Option<String> {
 }
 
 /// Best-effort cleanup of orphaned session scripts from previous app runs.
-/// Called from `setup()` on app startup. Removes every `.sh` under
-/// `<app_local_data_dir>/sessions/` — at that point the PtyManager is
-/// empty (in-memory state didn't survive the restart) so no live session
-/// can own one of these files.
+/// Called from `setup()` on app startup. Removes every `.sh` / `.fish`
+/// under `<app_local_data_dir>/sessions/` — at that point the PtyManager
+/// is empty (in-memory state didn't survive the restart) so no live
+/// session can own one of these files.
 pub fn cleanup_orphan_session_scripts(app: &AppHandle) {
     let dir: std::path::PathBuf = match app.path().app_local_data_dir() {
         Ok(d) => d.join("sessions"),
@@ -282,8 +258,8 @@ pub fn cleanup_orphan_session_scripts(app: &AppHandle) {
     let mut removed: usize = 0;
     for entry in entries.flatten() {
         let p: std::path::PathBuf = entry.path();
-        if p.extension().and_then(|s| s.to_str()) == Some("sh") && std::fs::remove_file(&p).is_ok()
-        {
+        let ext: Option<&str> = p.extension().and_then(|s| s.to_str());
+        if matches!(ext, Some("sh") | Some("fish")) && std::fs::remove_file(&p).is_ok() {
             removed += 1;
         }
     }
@@ -300,6 +276,7 @@ fn build_command(
     project: &Project,
     with_claude: bool,
     wsl_script_path: Option<&str>,
+    detected_shell: Option<&DetectedShell>,
 ) -> CommandBuilder {
     let mut cmd: CommandBuilder = match project.shell_kind {
         ShellKind::Native => {
@@ -350,41 +327,38 @@ fn build_command(
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash --norc --noprofile /mnt/c/.../<id>.sh
+            // wsl.exe -d <distro> --cd <cwd> -- <user_shell> -l -i /mnt/c/.../<id>.<ext>
             //
-            // Three layers of defense against the `.bash_profile`-ending-
-            // in-`exec zsh` cascade that's killed every previous iteration
-            // of this spawn path:
+            // We spawn the user's actual login shell (detected via getent
+            // — see crate::wsl_shell) with `-l -i`, so the user's own rc
+            // files load natively. That makes nvm / asdf / fnm / volta /
+            // mise all "just work" because the interactive shell sources
+            // them as it normally would on terminal launch.
             //
-            //   1. Script via temp file (PR #36) — sidesteps wsl.exe arg
-            //      quoting bugs.
-            //   2. No `-l -i` on bash (PR #37) — bash doesn't auto-source
-            //      profile/rc on entry.
-            //   3. `--norc --noprofile` (this PR) — even if some future
-            //      iteration of bash, or some hidden init mechanism, would
-            //      try to source rc files, this hard-disables it.
+            // No exec-zsh hijack risk here: if the user's actual shell IS
+            // zsh, that's exactly what we spawn — zsh sourcing .zshrc
+            // doesn't `exec` to anywhere else.
             //
-            // Combined with the script itself not sourcing any rc file
-            // (see CLAUDE_BASH_SCRIPT), the `exec zsh` is now structurally
-            // unreachable until the very last `exec "${SHELL}" -i` line.
+            // The script's filename extension matches the shell family
+            // (`.sh` for POSIX, `.fish` for fish), so shell loaders that
+            // look at the extension stay happy.
             //
-            // `with_claude=false` (the "Open shell instead" fallback from
-            // PR #25) still goes through `bash -l -i` so the user gets a
-            // proper interactive shell — same behavior as before.
+            // `with_claude=false` (the "Open shell instead" path) skips
+            // the script and hands the user a bare interactive shell.
+            let shell_path: &str = detected_shell
+                .map(|s| s.path.as_str())
+                .unwrap_or("/bin/bash");
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
             c.arg("--cd");
             c.arg(&project.cwd);
             c.arg("--");
-            c.arg("bash");
+            c.arg(shell_path);
+            c.arg("-l");
+            c.arg("-i");
             if with_claude && let Some(script) = wsl_script_path {
-                c.arg("--norc");
-                c.arg("--noprofile");
                 c.arg(script);
-            } else {
-                c.arg("-l");
-                c.arg("-i");
             }
             c
         }
@@ -439,9 +413,24 @@ fn spawn_pty_tasks(
         })
         .map_err(|e| AppError::Pty(format!("openpty failed: {e}")))?;
 
+    // Detect (or recall) the user's WSL login shell. None for native
+    // sessions. The cache lives on the app's managed state so a single
+    // probe per distro per process is enough.
+    let detected_shell: Option<DetectedShell> = if matches!(project.shell_kind, ShellKind::Wsl) {
+        let cache: tauri::State<'_, WslShellCache> = app.state();
+        let db_state: tauri::State<'_, DbState> = app.state();
+        Some(cache.detect(&db_state, &project.shell_value))
+    } else {
+        None
+    };
+
     let script_path: Option<std::path::PathBuf> =
         if matches!(project.shell_kind, ShellKind::Wsl) && with_claude {
-            match prepare_wsl_script(&app, session_id) {
+            let family: ShellFamily = detected_shell
+                .as_ref()
+                .map(|s| s.family)
+                .unwrap_or(ShellFamily::Posix);
+            match prepare_wsl_script(&app, session_id, family) {
                 Ok(p) => Some(p),
                 Err(err) => {
                     tracing::warn!(
@@ -457,7 +446,12 @@ fn spawn_pty_tasks(
         };
     let wsl_script_arg: Option<String> = script_path.as_deref().and_then(windows_to_wsl_path);
 
-    let cmd: CommandBuilder = build_command(project, with_claude, wsl_script_arg.as_deref());
+    let cmd: CommandBuilder = build_command(
+        project,
+        with_claude,
+        wsl_script_arg.as_deref(),
+        detected_shell.as_ref(),
+    );
     let mut child = pair
         .slave
         .spawn_command(cmd)

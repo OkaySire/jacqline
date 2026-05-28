@@ -10,6 +10,7 @@ mod sessions;
 mod setting;
 mod shell;
 mod updater;
+mod wsl_shell;
 
 use std::path::PathBuf;
 
@@ -107,6 +108,7 @@ pub fn run() {
             let db_state = db::DbState::new(&db_path)?;
             app.manage(db_state);
             app.manage(pty::PtyManager::new());
+            app.manage(wsl_shell::WslShellCache::new());
             tracing::info!(path = %db_path.display(), "db initialized");
 
             // Nothing owns yesterday's per-session .sh scripts — the

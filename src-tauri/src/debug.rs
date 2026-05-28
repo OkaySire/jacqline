@@ -17,6 +17,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::conpty_preload;
 use crate::db::DbState;
 use crate::error::{AppError, AppResult};
+use crate::wsl_shell::{self, DetectedShell, WslShellCache};
 
 const RECENT_LOG_LINES: usize = 100;
 const RECENT_SESSION_EXITS: usize = 5;
@@ -34,6 +35,7 @@ pub struct DebugSnapshot {
     pub log_path: String,
     pub os: OsInfo,
     pub wsl_distros: Vec<String>,
+    pub wsl_shells: Vec<WslShellEntry>,
     pub bundled_conpty: BundledConptyInfo,
     pub db_stats: DbStats,
     pub recent_session_exits: Vec<RecentExit>,
@@ -48,6 +50,16 @@ pub struct BundledConptyInfo {
     pub loaded: bool,
     pub dll_path: Option<String>,
     pub version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WslShellEntry {
+    pub distro: String,
+    pub detected: DetectedShell,
+    /// Pre-formatted invocation the user can paste into DevTools to
+    /// override the detected shell — surfaces in the Debug panel.
+    pub override_hint: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,7 +99,11 @@ pub struct UpdaterState {
 }
 
 #[tauri::command]
-pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult<DebugSnapshot> {
+pub async fn debug_snapshot(
+    app: AppHandle,
+    db: State<'_, DbState>,
+    wsl_cache: State<'_, WslShellCache>,
+) -> AppResult<DebugSnapshot> {
     let app_data_dir: PathBuf = app.path().app_data_dir()?;
     let log_dir: PathBuf = app.path().app_log_dir()?;
     let log_path: PathBuf =
@@ -104,6 +120,22 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
     } else {
         Vec::new()
     };
+
+    let wsl_shells: Vec<WslShellEntry> = wsl_cache
+        .snapshot()
+        .into_iter()
+        .map(|(distro, detected)| {
+            let key: String = wsl_shell::override_setting_key(&distro);
+            let override_hint: String = format!(
+                "await window.__TAURI__.core.invoke('setting_set', {{ key: '{key}', value: '<absolute /usr/bin/zsh-style path>' }})",
+            );
+            WslShellEntry {
+                distro,
+                detected,
+                override_hint,
+            }
+        })
+        .collect();
 
     let (db_stats, recent_exits, last_seen_sha) = {
         let conn = db.lock()?;
@@ -137,6 +169,7 @@ pub async fn debug_snapshot(app: AppHandle, db: State<'_, DbState>) -> AppResult
         log_path: log_path.to_string_lossy().into_owned(),
         os,
         wsl_distros,
+        wsl_shells,
         bundled_conpty,
         db_stats,
         recent_session_exits: recent_exits,

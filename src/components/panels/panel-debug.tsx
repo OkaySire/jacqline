@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { I } from "@/components/icons";
-import { debugSnapshot, type DebugSnapshot, type RecentExit } from "@/lib/api/debug";
+import {
+  debugSnapshot,
+  type DebugSnapshot,
+  type RecentExit,
+  type WslShellEntry,
+} from "@/lib/api/debug";
 import { getConsoleRing, type ConsoleRingEntry } from "@/lib/console-ring";
 
 /**
@@ -129,6 +134,28 @@ function SnapshotBody({ snap }: { readonly snap: DebugSnapshot }) {
               <li key={d}>· {d}</li>
             ))}
           </ul>
+        </Section>
+      )}
+      {snap.wslShells.length > 0 && (
+        <Section title="WSL detected shells">
+          <div className="flex flex-col gap-2">
+            {snap.wslShells.map((entry: WslShellEntry) => (
+              <div key={entry.distro} className="font-mono text-[11px]">
+                <div className="text-fg-1">
+                  <span className="text-fg-3">{entry.distro}: </span>
+                  {entry.detected.path}
+                  <span className="text-fg-3">
+                    {" "}
+                    ({entry.detected.family}
+                    {entry.detected.viaOverride ? ", override" : ", probed"})
+                  </span>
+                </div>
+                <pre className="text-fg-3 mt-1 w-full min-w-0 overflow-auto rounded bg-black/30 p-1.5 text-[10px] whitespace-pre-wrap">
+                  {entry.overrideHint}
+                </pre>
+              </div>
+            ))}
+          </div>
         </Section>
       )}
       <Section title="Database">
@@ -281,6 +308,16 @@ function formatMarkdown(snap: DebugSnapshot): string {
     lines.push("## WSL distros");
     for (const d of snap.wslDistros) {
       lines.push(`- ${d}`);
+    }
+  }
+  if (snap.wslShells.length > 0) {
+    lines.push("");
+    lines.push("## WSL detected shells");
+    for (const entry of snap.wslShells) {
+      lines.push(
+        `- **${entry.distro}** \`${entry.detected.path}\` (${entry.detected.family}, ${entry.detected.viaOverride ? "override" : "probed"})`,
+      );
+      lines.push(`  override hint: \`${entry.overrideHint}\``);
     }
   }
   lines.push("");

@@ -166,16 +166,35 @@ for dir in \
   [ -d "$dir" ] && PATH="$dir:$PATH"
 done
 
-# Version managers — these init scripts only define functions / tweak
+# Version managers. These init scripts only define functions / tweak
 # PATH, they don't `exec`, so they're safe to source here.
-[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
+#
+# After sourcing nvm we must also activate a version — `nvm use default`
+# is what the user's interactive shell does on startup. Without it,
+# `node` (and globally-installed CLIs like `claude`) resolve to whichever
+# version happens to be first in PATH, which can lag behind by months.
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
+  nvm use default --silent >/dev/null 2>&1 \
+    || nvm use node --silent >/dev/null 2>&1 \
+    || true
+fi
 [ -s "$HOME/.asdf/asdf.sh" ] && . "$HOME/.asdf/asdf.sh" >/dev/null 2>&1
 
-# Fallback: if nvm.sh wasn't sourced, at least add the latest installed
-# node bin so a globally-installed `claude` is reachable.
-for node_bin in "$HOME"/.nvm/versions/node/*/bin; do
-  [ -d "$node_bin" ] && PATH="$node_bin:$PATH" && break
-done
+# Fallbacks for the case where nvm.sh wasn't found / `nvm use` failed:
+# 1. Read the version recorded in ~/.nvm/alias/default and prepend its bin.
+# 2. As a last resort, prepend the first installed node bin so a
+#    globally-installed `claude` is at least reachable.
+if [ -f "$HOME/.nvm/alias/default" ]; then
+  nvm_default_version=$(cat "$HOME/.nvm/alias/default" 2>/dev/null)
+  nvm_default_bin="$HOME/.nvm/versions/node/v${nvm_default_version}/bin"
+  [ -d "$nvm_default_bin" ] && PATH="$nvm_default_bin:$PATH"
+fi
+if ! type -p node >/dev/null 2>&1; then
+  for node_bin in "$HOME"/.nvm/versions/node/*/bin; do
+    [ -d "$node_bin" ] && PATH="$node_bin:$PATH" && break
+  done
+fi
 export PATH
 
 printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'

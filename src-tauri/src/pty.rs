@@ -327,41 +327,38 @@ fn build_command(
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash --norc --noprofile /mnt/c/.../<id>.sh
+            // wsl.exe -d <distro> --cd <cwd> -- <user_shell> -l -i /mnt/c/.../<id>.<ext>
             //
-            // Three layers of defense against the `.bash_profile`-ending-
-            // in-`exec zsh` cascade that's killed every previous iteration
-            // of this spawn path:
+            // We spawn the user's actual login shell (detected via getent
+            // — see crate::wsl_shell) with `-l -i`, so the user's own rc
+            // files load natively. That makes nvm / asdf / fnm / volta /
+            // mise all "just work" because the interactive shell sources
+            // them as it normally would on terminal launch.
             //
-            //   1. Script via temp file (PR #36) — sidesteps wsl.exe arg
-            //      quoting bugs.
-            //   2. No `-l -i` on bash (PR #37) — bash doesn't auto-source
-            //      profile/rc on entry.
-            //   3. `--norc --noprofile` (this PR) — even if some future
-            //      iteration of bash, or some hidden init mechanism, would
-            //      try to source rc files, this hard-disables it.
+            // No exec-zsh hijack risk here: if the user's actual shell IS
+            // zsh, that's exactly what we spawn — zsh sourcing .zshrc
+            // doesn't `exec` to anywhere else.
             //
-            // Combined with the script itself not sourcing any rc file
-            // (see CLAUDE_BASH_SCRIPT), the `exec zsh` is now structurally
-            // unreachable until the very last `exec "${SHELL}" -i` line.
+            // The script's filename extension matches the shell family
+            // (`.sh` for POSIX, `.fish` for fish), so shell loaders that
+            // look at the extension stay happy.
             //
-            // `with_claude=false` (the "Open shell instead" fallback from
-            // PR #25) still goes through `bash -l -i` so the user gets a
-            // proper interactive shell — same behavior as before.
+            // `with_claude=false` (the "Open shell instead" path) skips
+            // the script and hands the user a bare interactive shell.
+            let shell_path: &str = detected_shell
+                .map(|s| s.path.as_str())
+                .unwrap_or("/bin/bash");
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
             c.arg("--cd");
             c.arg(&project.cwd);
             c.arg("--");
-            c.arg("bash");
+            c.arg(shell_path);
+            c.arg("-l");
+            c.arg("-i");
             if with_claude && let Some(script) = wsl_script_path {
-                c.arg("--norc");
-                c.arg("--noprofile");
                 c.arg(script);
-            } else {
-                c.arg("-l");
-                c.arg("-i");
             }
             c
         }

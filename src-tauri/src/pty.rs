@@ -132,30 +132,51 @@ const POSIX_CLAUDE_PREAMBLE: &str = "\
 
 /// Multi-line, file-friendly version of [`POSIX_CLAUDE_PREAMBLE`]. Written
 /// to disk on the host side, then run inside WSL as
-/// `bash /mnt/c/.../<sessionId>.sh` (note: NO `-l -i`).
+/// `bash --norc --noprofile /mnt/c/.../<sessionId>.sh`.
 ///
-/// We deliberately do **not** ask bash to be login + interactive when
-/// running this script: users frequently put `exec zsh` (or `exec fish`,
-/// etc.) at the end of `.bash_profile`, and that `exec` replaces bash —
-/// the script arg is lost in the process replacement and the preamble
-/// never runs.
+/// We bypass profile/rc sourcing on *every* layer — bash spawn flags AND
+/// inside the script — because users routinely put `exec zsh` (or
+/// `exec fish`, etc.) at the end of `.bash_profile`. Any path that
+/// sources such a file would replace the running bash mid-script and the
+/// rest of the preamble (cyan heartbeat, `claude`, exit-code line) would
+/// never run. PR #37 hit exactly that.
 ///
-/// Skipping `-l -i` also skips auto-sourcing of `~/.profile` /
-/// `~/.bashrc`, so the user's PATH (nvm, asdf, brew, etc.) wouldn't be
-/// loaded. We source the common rc files manually below — silent
-/// failures are fine, the goal is best-effort coverage of where users
-/// normally put `claude` on their PATH.
+/// Instead we rebuild PATH explicitly from the common dev-tool bin dirs,
+/// then source only the *safe* version-manager init scripts (nvm/asdf)
+/// which define functions + tweak PATH but never `exec`.
 ///
-/// `exec bash -i` at the end *will* honor the user's profile, so when
-/// claude exits the user drops into THEIR default shell (e.g. zsh via
-/// the same `exec zsh`). That's the right behavior — by the time
-/// claude has run, the user wants a familiar interactive shell.
+/// The final `exec "${SHELL:-/bin/bash}" -i` drops the user into THEIR
+/// preferred shell after claude exits — zsh / fish / whatever they set
+/// `$SHELL` to. By then they want their familiar interactive setup, with
+/// rc files and all.
 const CLAUDE_BASH_SCRIPT: &str = r#"#!/usr/bin/env bash
-# Load user PATH from common rc files. We're non-interactive on purpose
-# (see module doc on CLAUDE_BASH_SCRIPT), so we have to source manually.
-for rc in ~/.profile ~/.bash_profile ~/.bashrc ~/.zshenv ~/.zprofile; do
-  [ -f "$rc" ] && source "$rc" 2>/dev/null || true
+# Build PATH from known dev-tool locations. We intentionally avoid
+# sourcing ~/.profile / ~/.bash_profile / ~/.bashrc because those files
+# commonly end with `exec zsh` (or similar), which would replace bash
+# mid-script and the preamble below would never run.
+for dir in \
+  "$HOME/.local/bin" \
+  "$HOME/.cargo/bin" \
+  "$HOME/.bun/bin" \
+  "$HOME/.deno/bin" \
+  "$HOME/go/bin" \
+  "$HOME/.npm-global/bin" \
+  "/usr/local/bin" \
+  "/opt/homebrew/bin"; do
+  [ -d "$dir" ] && PATH="$dir:$PATH"
 done
+
+# Version managers — these init scripts only define functions / tweak
+# PATH, they don't `exec`, so they're safe to source here.
+[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
+[ -s "$HOME/.asdf/asdf.sh" ] && . "$HOME/.asdf/asdf.sh" >/dev/null 2>&1
+
+# Fallback: if nvm.sh wasn't sourced, at least add the latest installed
+# node bin so a globally-installed `claude` is reachable.
+for node_bin in "$HOME"/.nvm/versions/node/*/bin; do
+  [ -d "$node_bin" ] && PATH="$node_bin:$PATH" && break
+done
+export PATH
 
 printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
 type -p claude || printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
@@ -165,7 +186,10 @@ claude
 rc=$?
 
 printf '\033[31m< claude exited with %d\033[0m\r\n' "$rc"
-exec bash -i
+
+# Drop into the user's preferred shell — they expect zsh / fish / etc.
+# after claude is done, not the bare bash we used for the preamble.
+exec "${SHELL:-/bin/bash}" -i
 "#;
 
 /// PowerShell equivalent of [`POSIX_CLAUDE_PREAMBLE`]. Relies on `-NoExit`
@@ -307,24 +331,27 @@ fn build_command(
             }
         }
         ShellKind::Wsl => {
-            // wsl.exe -d <distro> --cd <cwd> -- bash /mnt/c/.../<id>.sh
+            // wsl.exe -d <distro> --cd <cwd> -- bash --norc --noprofile /mnt/c/.../<id>.sh
             //
-            // We pass the preamble via a temp `.sh` file (accessed through
-            // /mnt/c/) instead of inline `-c '<preamble>'` because the
-            // Windows → wsl.exe → bash chain mangles long single-arg
-            // quoting — `;`, `||`, octal escapes, multibyte UTF-8 inside
-            // one arg = bash exits with 0xC000013A before running
-            // anything (PR #34 diagnostic, PR #36 fix).
+            // Three layers of defense against the `.bash_profile`-ending-
+            // in-`exec zsh` cascade that's killed every previous iteration
+            // of this spawn path:
             //
-            // No `-l -i` on the spawn: users commonly chain `exec zsh`
-            // (or fish, etc.) at the end of `.bash_profile`, and that
-            // `exec` replaces bash before our script arg ever runs. The
-            // script sources the common rc files itself so PATH is still
-            // populated (see CLAUDE_BASH_SCRIPT doc).
+            //   1. Script via temp file (PR #36) — sidesteps wsl.exe arg
+            //      quoting bugs.
+            //   2. No `-l -i` on bash (PR #37) — bash doesn't auto-source
+            //      profile/rc on entry.
+            //   3. `--norc --noprofile` (this PR) — even if some future
+            //      iteration of bash, or some hidden init mechanism, would
+            //      try to source rc files, this hard-disables it.
             //
-            // With `with_claude=false` we have no script to pass — fall
-            // back to a plain interactive shell so the user can still
-            // type commands.
+            // Combined with the script itself not sourcing any rc file
+            // (see CLAUDE_BASH_SCRIPT), the `exec zsh` is now structurally
+            // unreachable until the very last `exec "${SHELL}" -i` line.
+            //
+            // `with_claude=false` (the "Open shell instead" fallback from
+            // PR #25) still goes through `bash -l -i` so the user gets a
+            // proper interactive shell — same behavior as before.
             let mut c = CommandBuilder::new("wsl.exe");
             c.arg("-d");
             c.arg(&project.shell_value);
@@ -333,6 +360,8 @@ fn build_command(
             c.arg("--");
             c.arg("bash");
             if with_claude && let Some(script) = wsl_script_path {
+                c.arg("--norc");
+                c.arg("--noprofile");
                 c.arg(script);
             } else {
                 c.arg("-l");

@@ -287,8 +287,8 @@ fn read_last_seen_sha(conn: &rusqlite::Connection) -> AppResult<Option<String>> 
 }
 
 fn wsl_distros() -> Vec<String> {
-    use std::process::{Command, Stdio};
-    let output = match Command::new("wsl.exe")
+    use std::process::Stdio;
+    let output = match crate::cmd_util::silent_command("wsl.exe")
         .args(["--list", "--quiet"])
         .stderr(Stdio::null())
         .output()

@@ -1,3 +1,4 @@
+mod cmd_util;
 mod conpty_preload;
 mod db;
 mod debug;

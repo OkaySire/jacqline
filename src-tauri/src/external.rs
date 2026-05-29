@@ -2,10 +2,10 @@
 //! spawning the user-configured external editor for a project file.
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use tauri::State;
 
+use crate::cmd_util::silent_command;
 use crate::db::DbState;
 use crate::error::{AppError, AppResult};
 use crate::project::Project;
@@ -27,7 +27,7 @@ pub async fn git_diff(
     let project: Project = load_project(&db, &project_id)?;
     let scoped: PathBuf = resolve_scoped(&project, &rel_path)?;
 
-    let output = Command::new("git")
+    let output = silent_command("git")
         .arg("-C")
         .arg(&project.cwd)
         .arg("diff")
@@ -96,7 +96,7 @@ pub async fn shell_open_external(
         .split_first()
         .ok_or_else(|| AppError::Validation("external_editor template is empty".into()))?;
 
-    Command::new(cmd)
+    silent_command(cmd)
         .args(args)
         .current_dir(&project.cwd)
         .spawn()

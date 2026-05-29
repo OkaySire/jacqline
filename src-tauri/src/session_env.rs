@@ -27,11 +27,10 @@
 //! Markdown output keeps the redaction, so a snapshot the user pastes
 //! into a bug report can't leak secrets by accident.
 
-use std::process::Command;
-
 use serde::Serialize;
 use tauri::State;
 
+use crate::cmd_util::silent_command;
 use crate::db::{DbState, now_millis};
 use crate::error::AppResult;
 use crate::project::{self, ShellKind};
@@ -178,7 +177,7 @@ fn capture_wsl(distro: &str, shell_path: &str) -> Result<Vec<(String, String)>, 
     // Use `env -0` so values that contain newlines stay intact. We invoke
     // the user's login shell directly with `-l -i -c` — single short arg
     // (no quoting cascade like the spawn path used to hit).
-    let output = Command::new("wsl.exe")
+    let output = silent_command("wsl.exe")
         .args(["-d", distro, "--", shell_path, "-l", "-i", "-c", "env -0"])
         .output()
         .map_err(|e| format!("wsl.exe spawn failed: {e}"))?;

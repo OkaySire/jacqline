@@ -36,9 +36,9 @@
 //! Customize modal.
 
 use std::collections::HashMap;
-use std::process::Command;
 use std::sync::Mutex;
 
+use crate::cmd_util::silent_command;
 use crate::db::DbState;
 
 /// Classifies how we should write and invoke the preamble script for a
@@ -152,7 +152,7 @@ fn probe_via_wsl(distro: &str) -> Option<DetectedShell> {
     // Call `sh -c '<probe>'` explicitly so the user's login shell rc
     // files do NOT get sourced during detection (a `.bash_profile` ending
     // with `exec zsh` would otherwise hijack the probe args).
-    let output = Command::new("wsl.exe")
+    let output = silent_command("wsl.exe")
         .args([
             "-d",
             distro,

@@ -96,9 +96,10 @@ mod unix {
 
 #[cfg(windows)]
 mod windows {
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     use super::{ShellKind, ShellOption};
+    use crate::cmd_util::silent_command;
 
     pub fn detect_native() -> Vec<ShellOption> {
         const CANDIDATES: &[(&str, &str)] = &[
@@ -123,7 +124,7 @@ mod windows {
             return Vec::new();
         }
 
-        let output = match Command::new("wsl.exe")
+        let output = match silent_command("wsl.exe")
             .args(["--list", "--quiet"])
             .stderr(Stdio::null())
             .output()
@@ -159,7 +160,7 @@ mod windows {
     }
 
     fn on_path(binary: &str) -> bool {
-        Command::new("where")
+        silent_command("where")
             .arg(binary)
             .stdout(Stdio::null())
             .stderr(Stdio::null())

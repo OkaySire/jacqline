@@ -145,7 +145,7 @@ body {
    * — which is what made the MainPane shrink to ~10 chars when the Debug
    * panel was opened with a long PATH value. */
   grid-template-columns:
-    minmax(0, var(--jq-sb-w)) 10px minmax(0, 1fr) 0
+    minmax(0, var(--jq-sb-w)) 10px minmax(0, 1fr) 5px
     minmax(0, var(--jq-inspector-w));
   min-height: 0;
   min-width: 0;
@@ -158,7 +158,7 @@ body {
 .jq-app-frame[data-sb="collapsed"] .jq-main {
   /* Collapsed icon-rail sidebar sits flush with the content (no gap). */
   grid-template-columns:
-    minmax(0, var(--jq-sb-w-collapsed)) minmax(0, 1fr) 0
+    minmax(0, var(--jq-sb-w-collapsed)) minmax(0, 1fr) 5px
     minmax(0, var(--jq-inspector-w));
 }
 .jq-app-frame[data-inspector="hidden"] .jq-main {
@@ -167,6 +167,36 @@ body {
 }
 .jq-app-frame[data-sb="collapsed"][data-inspector="hidden"] .jq-main {
   grid-template-columns: minmax(0, var(--jq-sb-w-collapsed)) minmax(0, 1fr);
+}
+
+/* Drag handle between MainPane and Inspector. Lives in the 5-track grid's
+ * 4th column (5 px wide). The hit target is the full column; the visible
+ * affordance is a thin centered line that brightens on hover/active. The
+ * drag itself is handled in JS — see src/components/inspector-resizer.tsx.
+ */
+.jq-resizer-v {
+  cursor: ew-resize;
+  min-width: 0;
+  position: relative;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.jq-resizer-v::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: 6px auto;
+  width: 1px;
+  background: var(--color-line-soft);
+  border-radius: 1px;
+}
+.jq-resizer-v:hover {
+  background: oklch(0.7 0.12 295 / 0.12);
+}
+.jq-resizer-v:hover::before,
+.jq-resizer-v:active::before {
+  background: oklch(0.78 0.18 295 / 0.7);
+  width: 2px;
 }
 
 /* Empty placeholder occupying the "gap" / "flush" tracks in the 5-track

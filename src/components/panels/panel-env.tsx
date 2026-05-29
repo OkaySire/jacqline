@@ -161,28 +161,33 @@ export function PanelEnv({ projectId }: { readonly projectId: string }) {
                 className="bg-bg-2/40 border-line-soft text-fg-1 placeholder:text-fg-3 rounded-md border px-2 py-1 text-[11px] outline-none focus:border-violet-500/60"
               />
             )}
-            <table className="w-full text-left font-mono text-[10.5px]">
-              <tbody>
-                {filtered.map((v: EnvVar) => (
-                  <tr key={v.name} className="border-line-soft/50 border-b last:border-b-0">
-                    <td className="text-fg-1 pr-2 py-1 align-top break-all">{v.name}</td>
-                    <td
-                      className={
-                        v.redacted ? "text-accent-fg py-1 align-top" : "text-fg-2 py-1 align-top"
-                      }
-                    >
-                      {v.redacted ? (
-                        <span className="bg-accent-soft border-accent-line rounded border px-1.5 py-0.5 text-[10px]">
-                          REDACTED
-                        </span>
-                      ) : (
-                        <span className="break-all">{v.value}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="grid w-full grid-cols-[minmax(140px,30%)_1fr] font-mono text-[10.5px]">
+              {filtered.map((v: EnvVar) => (
+                <div key={v.name} className="contents">
+                  <div
+                    className="text-fg-1 border-line-soft/50 truncate border-b py-1 pr-3"
+                    title={v.name}
+                  >
+                    {v.name}
+                  </div>
+                  <div
+                    className={
+                      v.redacted
+                        ? "text-accent-fg border-line-soft/50 border-b py-1"
+                        : "text-fg-2 border-line-soft/50 min-w-0 border-b py-1"
+                    }
+                  >
+                    {v.redacted ? (
+                      <span className="bg-accent-soft border-accent-line rounded border px-1.5 py-0.5 text-[10px]">
+                        REDACTED
+                      </span>
+                    ) : (
+                      <span className="break-all">{v.value}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
             {filtered.length === 0 && snap.vars.length > 0 && (
               <p className="text-fg-3 text-[11px]">No vars match {`"${query}"`}.</p>
             )}

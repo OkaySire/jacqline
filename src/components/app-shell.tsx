@@ -1,5 +1,8 @@
+import type { CSSProperties } from "react";
+
 import { CustomizeWindow } from "@/components/customize-window";
 import { Inspector } from "@/components/inspector";
+import { InspectorResizer } from "@/components/inspector-resizer";
 import { MainPane } from "@/components/main-pane";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ProjectConfigWindow } from "@/components/project-config-window";
@@ -7,6 +10,7 @@ import { SessionDialog } from "@/components/session-dialog";
 import { Sidebar } from "@/components/sidebar";
 import { TitleBar } from "@/components/title-bar";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -28,11 +32,20 @@ export function AppShell() {
   const openProjectConfig = useUiStore((s) => s.openProjectConfig);
   const openNewSession = useUiStore((s) => s.openNewSession);
   const openEditSession = useUiStore((s) => s.openEditSession);
+  const inspectorWidth = useSettingsStore((s) => s.inspectorWidth);
+
+  // Inject inspector width as a CSS variable on the app frame so the
+  // `.jq-main` grid template picks it up. InspectorResizer mutates this
+  // value directly on the DOM node during drag to avoid per-pixel React
+  // re-renders; on mouseup the settings store commits the final value
+  // and this inline style re-applies the same value with no visual jump.
+  const frameStyle = { "--jq-inspector-w": `${String(inspectorWidth)}px` } as CSSProperties;
 
   return (
     <>
       <div
         className="jq-app-frame"
+        style={frameStyle}
         data-sb={sidebarCollapsed ? "collapsed" : "expanded"}
         data-inspector={inspectorHidden ? "hidden" : "shown"}
       >
@@ -60,7 +73,7 @@ export function AppShell() {
           <MainPane />
           {!inspectorHidden && (
             <>
-              <div className="jq-track-spacer" aria-hidden />
+              <InspectorResizer />
               <Inspector />
             </>
           )}

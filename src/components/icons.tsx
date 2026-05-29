@@ -412,4 +412,15 @@ export const I = {
       />
     </svg>
   ),
+  env: (p: IconProps): ReactElement => (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" {...p}>
+      <path
+        d="M5 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1M11 3h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path d="M6 6h2M6 8h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  ),
 };

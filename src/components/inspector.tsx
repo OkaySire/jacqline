@@ -4,12 +4,13 @@ import { I } from "@/components/icons";
 import { PanelBrowser } from "@/components/panels/panel-browser";
 import { PanelDebug } from "@/components/panels/panel-debug";
 import { PanelDiff } from "@/components/panels/panel-diff";
+import { PanelEnv } from "@/components/panels/panel-env";
 import { PanelFile } from "@/components/panels/panel-file";
 import { PanelTasks } from "@/components/panels/panel-tasks";
 import { cn } from "@/lib/utils";
 import { useActiveProject } from "@/stores/projects";
 
-type PanelType = "file" | "browser" | "tasks" | "diff" | "debug";
+type PanelType = "file" | "browser" | "tasks" | "diff" | "debug" | "env";
 
 interface InspectorTab {
   readonly id: string;
@@ -70,6 +71,13 @@ const PANEL_CHOICES: readonly PanelChoice[] = [
     title: "Debug",
     icon: "bug",
     description: "Snapshot for bug reports",
+  },
+  {
+    key: "env",
+    type: "env",
+    title: "Env",
+    icon: "env",
+    description: "Active session env vars",
   },
 ];
 
@@ -197,6 +205,9 @@ function PanelBody({ tab, projectId }: { readonly tab: InspectorTab; readonly pr
   }
   if (tab.type === "debug") {
     return <PanelDebug />;
+  }
+  if (tab.type === "env") {
+    return <PanelEnv projectId={projectId} />;
   }
   return <PanelDiff projectId={projectId} />;
 }

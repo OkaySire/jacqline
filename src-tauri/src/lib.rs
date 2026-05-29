@@ -6,6 +6,7 @@ mod external;
 mod project;
 mod project_fs;
 mod pty;
+mod session_env;
 mod sessions;
 mod setting;
 mod shell;
@@ -158,6 +159,7 @@ pub fn run() {
             updater::updater_download,
             updater::updater_install,
             debug::debug_snapshot,
+            session_env::session_env_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

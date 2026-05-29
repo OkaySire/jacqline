@@ -4,32 +4,21 @@
 //! ## Capture method per shell kind
 //!
 //! - **WSL** (`ShellKind::Wsl`): respawn a fresh login shell over wsl.exe
-//!    and read `env -0` from it. The reported environment is "what the
-//!    user's login shell would set up right now", **not** the live env of
-//!    the running session. Two reasons:
-//!
-//!    1. The PID we stored is `wsl.exe`'s on the Windows side, not the
-//!       bash PID inside WSL, so `/proc/<pid>/environ` would 404.
-//!    2. Hunting the right PID inside WSL via `ps | grep <script>` is
-//!       fragile and the bash process has typically `exec`'d into `claude`
-//!       by the time the user opens the panel — its env at that point is
-//!       claude's process env, less useful than the shell's.
-//!
-//!    The fresh-shell capture is what users actually need to debug PATH /
-//!    nvm / asdf issues. Marked `wsl_fresh_login_shell` in the DTO so the
-//!    panel can explain the discrepancy.
-//!
+//!   and read `env -0`. Reports "what the user's login shell would set up
+//!   right now", NOT the live env of the running session — the stored
+//!   PID is `wsl.exe`'s on the Windows side (not bash inside WSL), and
+//!   the bash process has typically `exec`'d into `claude` by the time
+//!   the user opens the panel. The fresh-shell capture is what users
+//!   actually need to debug PATH / nvm / asdf. Method tag:
+//!   `wsl_fresh_login_shell`.
 //! - **Native bash / zsh on Linux**: `/proc/<pid>/environ` — accurate and
-//!    live because the stored PID *is* the shell process. Marked
-//!    `proc_environ`.
-//!
-//! - **Native pwsh / cmd on Windows**: unsupported in V0.1. Querying
-//!    another process's env on Windows needs `NtQueryInformationProcess`
-//!    + PEB traversal. Returns an explanatory error so the panel can
-//!    tell the user what to expect. V0.2 follow-up.
-//!
+//!   live because the stored PID *is* the shell. Method tag:
+//!   `proc_environ`.
+//! - **Native pwsh / cmd on Windows**: unsupported in V0.1 — needs
+//!   `NtQueryInformationProcess` + PEB traversal. Returns an explanatory
+//!   error in the DTO. V0.2.
 //! - **Native bash / zsh on macOS**: unsupported in V0.1 (no `/proc`).
-//!    Returns an explanatory error.
+//!   Returns an explanatory error. V0.2.
 //!
 //! ## Redaction
 //!

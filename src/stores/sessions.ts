@@ -68,6 +68,17 @@ interface SessionsState {
    */
   readonly handleExit: (sessionId: string, code: number | null) => void;
 
+  /**
+   * Apply the Claude metadata intercepted by the backend watcher (see
+   * `src-tauri/src/claude_watch.rs`). Plumbed from the global listener
+   * that subscribes to `session_meta_updated:<sessionId>` events.
+   */
+  readonly applyClaudeMetadata: (
+    sessionId: string,
+    claudeId: string,
+    claudeVersion: string,
+  ) => void;
+
   /** Clear the recorded exit info for `projectId` (e.g. after restart). */
   readonly clearExit: (projectId: string) => void;
 }
@@ -292,6 +303,28 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       const nextExits: Map<string, SessionExitInfo> = new Map(state.lastExitByProject);
       nextExits.set(exitedProjectId, { sessionId, code });
       return { sessionsByProject: nextSessions, lastExitByProject: nextExits };
+    });
+  },
+
+  applyClaudeMetadata: (sessionId: string, claudeId: string, claudeVersion: string): void => {
+    set((state: SessionsState) => {
+      const nextSessions: Map<string, readonly SessionMeta[]> = new Map(state.sessionsByProject);
+      let changed: boolean = false;
+      for (const [projectId, sessions] of state.sessionsByProject) {
+        const idx: number = sessions.findIndex((s: SessionMeta) => s.id === sessionId);
+        if (idx >= 0) {
+          const updated: SessionMeta[] = sessions.slice();
+          const prev: SessionMeta = sessions[idx]!;
+          updated[idx] = { ...prev, claudeId, claudeVersion };
+          nextSessions.set(projectId, updated);
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) {
+        return state;
+      }
+      return { sessionsByProject: nextSessions };
     });
   },
 

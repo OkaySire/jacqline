@@ -7,6 +7,7 @@ interface RawSessionMeta {
   readonly project_id: string;
   readonly name: string;
   readonly claude_id: string;
+  readonly claude_version: string;
   readonly status: SessionStatus;
   readonly pid: number;
   readonly started_at: number;
@@ -19,6 +20,7 @@ function fromRaw(raw: RawSessionMeta): SessionMeta {
     projectId: raw.project_id,
     name: raw.name,
     claudeId: raw.claude_id,
+    claudeVersion: raw.claude_version,
     status: raw.status,
     pid: raw.pid,
     startedAt: raw.started_at,

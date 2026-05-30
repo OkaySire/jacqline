@@ -1,3 +1,4 @@
+mod claude_watch;
 mod cmd_util;
 mod conpty_preload;
 mod db;

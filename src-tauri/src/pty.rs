@@ -570,16 +570,19 @@ fn spawn_pty_tasks(
     });
 
     // Waiter: blocks until child exits, persists `status=stopped` in SQL,
-    // emits `pty:exit:<id>`.
+    // emits `pty:exit:<id>`. We clone `db_arc` here so the claude watcher
+    // spawned below can still own its own ref — without the clone, the
+    // waiter's move would consume the only handle.
     {
         let exit_event: String = format!("pty:exit:{session_id}");
         let app_handle: AppHandle = app.clone();
         let session_id_wait: String = session_id.to_owned();
+        let db_arc_for_waiter: Arc<Mutex<Connection>> = Arc::clone(&db_arc);
         tokio::task::spawn_blocking(move || {
             let status = child.wait();
             let code: Option<u32> = status.ok().map(|s| s.exit_code());
 
-            match db_arc.lock() {
+            match db_arc_for_waiter.lock() {
                 Ok(conn) => {
                     if let Err(err) = sessions::mark_stopped(&conn, &session_id_wait, now_millis())
                     {

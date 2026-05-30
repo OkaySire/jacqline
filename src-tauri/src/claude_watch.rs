@@ -258,16 +258,16 @@ fn systemtime_to_ms(t: SystemTime) -> i64 {
 }
 
 fn dirs_home() -> Option<PathBuf> {
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() {
-            return Some(PathBuf::from(home));
-        }
+    if let Ok(home) = std::env::var("HOME")
+        && !home.is_empty()
+    {
+        return Some(PathBuf::from(home));
     }
     #[cfg(windows)]
-    if let Ok(profile) = std::env::var("USERPROFILE") {
-        if !profile.is_empty() {
-            return Some(PathBuf::from(profile));
-        }
+    if let Ok(profile) = std::env::var("USERPROFILE")
+        && !profile.is_empty()
+    {
+        return Some(PathBuf::from(profile));
     }
     None
 }

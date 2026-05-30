@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 
+use crate::claude_watch::{self, WatcherHandle as ClaudeWatcherHandle};
 use crate::db::{DbState, now_millis};
 use crate::error::{AppError, AppResult};
 use crate::project::{self, Project, ShellKind};
@@ -37,6 +38,12 @@ struct PtyHandle {
     /// Cleaned up on Drop — fire-and-forget; we don't care if the file is
     /// already gone or the FS is in a weird state on shutdown.
     script_path: Option<std::path::PathBuf>,
+    /// Background task polling `~/.claude/projects/<encoded-cwd>/` for the
+    /// JSONL transcript Claude writes on spawn. Drops cancel the task —
+    /// it would otherwise tick for 30 s after the session is killed.
+    /// Held as `_claude_watcher` because we only need its Drop side-effect,
+    /// not method calls.
+    _claude_watcher: Option<ClaudeWatcherHandle>,
 }
 
 impl Drop for PtyHandle {
@@ -390,6 +397,10 @@ struct SpawnedPty {
     /// where `with_claude=false`. Stored on the [`PtyHandle`] so its
     /// `Drop` impl can clean the file up.
     script_path: Option<std::path::PathBuf>,
+    /// Watcher for the Claude Code JSONL transcript — populates the
+    /// session's `claude_id` + `claude_version` once intercepted.
+    /// `None` when `with_claude=false`.
+    claude_watcher: Option<ClaudeWatcherHandle>,
 }
 
 /// Open a fresh PTY for `project`, spawn the provider command inside it, and
@@ -589,11 +600,27 @@ fn spawn_pty_tasks(
         });
     }
 
+    // Watch for Claude's JSONL transcript so we can capture its
+    // sessionId + version. Skipped when with_claude=false — no transcript
+    // will appear.
+    let claude_watcher: Option<ClaudeWatcherHandle> = if with_claude {
+        Some(claude_watch::spawn(
+            app.clone(),
+            db_arc.clone(),
+            project.clone(),
+            session_id.to_owned(),
+            now_millis(),
+        ))
+    } else {
+        None
+    };
+
     Ok(SpawnedPty {
         pid,
         master: pair.master,
         write_tx,
         script_path,
+        claude_watcher,
     })
 }
 
@@ -629,6 +656,7 @@ pub async fn session_create(
         project_id: project.id.clone(),
         name: session_name,
         claude_id: String::new(),
+        claude_version: String::new(),
         status: SessionStatus::Running,
         pid: spawned.pid,
         started_at,
@@ -645,6 +673,7 @@ pub async fn session_create(
         master: spawned.master,
         write_tx: spawned.write_tx,
         script_path: spawned.script_path,
+        _claude_watcher: spawned.claude_watcher,
     })?;
 
     tracing::info!(
@@ -696,6 +725,7 @@ pub async fn session_restart(
         project_id: existing.project_id,
         name: existing.name.clone(),
         claude_id: existing.claude_id,
+        claude_version: existing.claude_version,
         status: SessionStatus::Running,
         pid: spawned.pid,
         started_at,
@@ -707,6 +737,7 @@ pub async fn session_restart(
         master: spawned.master,
         write_tx: spawned.write_tx,
         script_path: spawned.script_path,
+        _claude_watcher: spawned.claude_watcher,
     })?;
 
     tracing::info!(

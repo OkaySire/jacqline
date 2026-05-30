@@ -23,6 +23,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "002_sessions",
         include_str!("../migrations/002_sessions.sql"),
     ),
+    (
+        "003_claude_metadata",
+        include_str!("../migrations/003_claude_metadata.sql"),
+    ),
 ];
 
 impl DbState {

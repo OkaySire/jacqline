@@ -145,7 +145,12 @@ export function PanelEnv({ projectId }: { readonly projectId: string }) {
         {error !== null && <p className="text-destructive text-xs">{error}</p>}
         {snap !== null && !loading && (
           <div className="flex min-w-0 flex-col gap-3">
-            <Header snap={snap} redactedCount={redactedCount} />
+            <Header
+              snap={snap}
+              redactedCount={redactedCount}
+              claudeId={activeSession?.claudeId ?? ""}
+              claudeVersion={activeSession?.claudeVersion ?? ""}
+            />
             {snap.error !== null && (
               <div className="bg-bg-2/40 border-line-soft text-fg-2 rounded-md border p-3 text-[11px]">
                 <p className="font-medium">Capture failed</p>
@@ -201,13 +206,24 @@ export function PanelEnv({ projectId }: { readonly projectId: string }) {
 function Header({
   snap,
   redactedCount,
+  claudeId,
+  claudeVersion,
 }: {
   readonly snap: SessionEnvSnapshot;
   readonly redactedCount: number;
+  readonly claudeId: string;
+  readonly claudeVersion: string;
 }) {
+  const claudeLabel: string =
+    claudeId === ""
+      ? "(not yet intercepted)"
+      : claudeVersion === ""
+        ? claudeId
+        : `${claudeId} (v${claudeVersion})`;
   return (
     <section className="bg-bg-2/40 border-line-soft min-w-0 rounded-md border p-3">
       <KV label="Session" value={`${snap.sessionName} (${snap.sessionId.slice(0, 8)})`} />
+      <KV label="Claude" value={claudeLabel} />
       <KV label="Shell" value={snap.shell} />
       <KV label="CWD" value={snap.cwd} />
       <KV label="PID" value={String(snap.pid)} />

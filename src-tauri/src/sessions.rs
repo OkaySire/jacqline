@@ -54,7 +54,13 @@ pub struct SessionMeta {
     pub id: String,
     pub project_id: String,
     pub name: String,
+    /// Claude CLI's own session UUID, intercepted from the JSONL
+    /// transcript Claude writes to `~/.claude/projects/<encoded-cwd>/`.
+    /// Empty string until the watcher in `claude_watch.rs` finds it.
     pub claude_id: String,
+    /// Claude CLI semver string, intercepted from the same JSONL first
+    /// line. Empty string until intercepted.
+    pub claude_version: String,
     pub status: SessionStatus,
     pub pid: u32,
     pub started_at: i64,
@@ -76,6 +82,7 @@ fn row_to_session(row: &Row<'_>) -> rusqlite::Result<SessionMeta> {
         project_id: row.get("project_id")?,
         name: row.get("name")?,
         claude_id: row.get("claude_id")?,
+        claude_version: row.get("claude_version")?,
         status,
         pid: u32::try_from(pid_signed).unwrap_or(0),
         started_at: row.get("started_at")?,
@@ -87,18 +94,35 @@ fn row_to_session(row: &Row<'_>) -> rusqlite::Result<SessionMeta> {
 /// `pty::session_create` right after the PTY is up.
 pub(crate) fn insert(conn: &Connection, meta: &SessionMeta) -> AppResult<()> {
     conn.execute(
-        "INSERT INTO sessions (id, project_id, name, claude_id, status, pid, started_at, ended_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO sessions (id, project_id, name, claude_id, claude_version, status, pid, started_at, ended_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             meta.id,
             meta.project_id,
             meta.name,
             meta.claude_id,
+            meta.claude_version,
             meta.status.as_str(),
             i64::from(meta.pid),
             meta.started_at,
             meta.ended_at,
         ],
+    )?;
+    Ok(())
+}
+
+/// Persist the Claude metadata intercepted from the JSONL transcript.
+/// Called by the `claude_watch.rs` polling task; idempotent and only
+/// runs once per session (the watcher stops after the first match).
+pub(crate) fn set_claude_metadata(
+    conn: &Connection,
+    id: &str,
+    claude_id: &str,
+    claude_version: &str,
+) -> AppResult<()> {
+    conn.execute(
+        "UPDATE sessions SET claude_id = ?1, claude_version = ?2 WHERE id = ?3",
+        params![claude_id, claude_version, id],
     )?;
     Ok(())
 }
@@ -152,7 +176,7 @@ pub(crate) fn delete(conn: &Connection, id: &str) -> AppResult<bool> {
 /// Fetch a single session by id.
 pub(crate) fn get_by_id(conn: &Connection, id: &str) -> AppResult<SessionMeta> {
     conn.query_row(
-        "SELECT id, project_id, name, claude_id, status, pid, started_at, ended_at \
+        "SELECT id, project_id, name, claude_id, claude_version, status, pid, started_at, ended_at \
          FROM sessions WHERE id = ?1",
         [id],
         row_to_session,
@@ -186,7 +210,7 @@ pub async fn session_list_by_project(
 ) -> AppResult<Vec<SessionMeta>> {
     let conn = db.lock()?;
     let mut stmt = conn.prepare(
-        "SELECT id, project_id, name, claude_id, status, pid, started_at, ended_at \
+        "SELECT id, project_id, name, claude_id, claude_version, status, pid, started_at, ended_at \
          FROM sessions WHERE project_id = ?1 ORDER BY started_at ASC",
     )?;
     let rows = stmt.query_map([&project_id], row_to_session)?;
@@ -214,7 +238,7 @@ pub async fn session_update_meta(
     }
     let meta: SessionMeta = conn
         .query_row(
-            "SELECT id, project_id, name, claude_id, status, pid, started_at, ended_at \
+            "SELECT id, project_id, name, claude_id, claude_version, status, pid, started_at, ended_at \
              FROM sessions WHERE id = ?1",
             [&session_id],
             row_to_session,

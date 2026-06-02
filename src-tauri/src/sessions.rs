@@ -222,17 +222,34 @@ pub async fn session_list_by_project(
 pub async fn session_update_meta(
     db: State<'_, DbState>,
     session_id: String,
-    name: String,
+    name: Option<String>,
+    claude_id: Option<String>,
 ) -> AppResult<SessionMeta> {
-    let trimmed: String = name.trim().to_owned();
-    if trimmed.is_empty() {
-        return Err(AppError::Validation("session name cannot be empty".into()));
+    if name.is_none() && claude_id.is_none() {
+        return Err(AppError::Validation(
+            "at least one of name / claudeId must be supplied".into(),
+        ));
     }
     let conn = db.lock()?;
-    let affected: usize = conn.execute(
-        "UPDATE sessions SET name = ?1 WHERE id = ?2",
-        params![trimmed, session_id],
-    )?;
+    let mut affected: usize = 0;
+    if let Some(raw_name) = name {
+        let trimmed: String = raw_name.trim().to_owned();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("session name cannot be empty".into()));
+        }
+        affected += conn.execute(
+            "UPDATE sessions SET name = ?1 WHERE id = ?2",
+            params![trimmed, session_id],
+        )?;
+    }
+    if let Some(raw_claude_id) = claude_id {
+        // Trim but allow empty (user explicitly clearing the override).
+        let trimmed: String = raw_claude_id.trim().to_owned();
+        affected += conn.execute(
+            "UPDATE sessions SET claude_id = ?1 WHERE id = ?2",
+            params![trimmed, session_id],
+        )?;
+    }
     if affected == 0 {
         return Err(AppError::NotFound);
     }

@@ -111,11 +111,15 @@ function SessionDialogForm({
         );
 
   const createSession = useSessionsStore((s) => s.createSession);
-
+  const updateSession = useSessionsStore((s) => s.updateSession);
   const deleteSession = useSessionsStore((s) => s.deleteSession);
 
   const [name, setName] = useState<string>(existingSession?.name ?? "");
   const [agent, setAgent] = useState<string>("default");
+  // New mode: optional id to resume from. Edit mode: shows the
+  // currently-stored claudeId so the user can copy it or override it.
+  const [claudeIdInput, setClaudeIdInput] = useState<string>(existingSession?.claudeId ?? "");
+  const [copiedClaudeId, setCopiedClaudeId] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
@@ -151,18 +155,47 @@ function SessionDialogForm({
 
     setSubmitting(true);
     try {
+      const trimmedClaudeId: string = claudeIdInput.trim();
       if (state.mode === "new") {
-        await createSession(state.projectId, trimmed);
-      } else {
-        // Edit mode wiring (name + agent → session_update_meta + persisted
-        // agent column) lands in V0.2 — for now we just close.
-        console.warn("Session edit not yet wired");
+        await createSession(
+          state.projectId,
+          trimmed,
+          undefined,
+          trimmedClaudeId === "" ? undefined : trimmedClaudeId,
+        );
+      } else if (existingSession !== undefined) {
+        const patch: { name?: string; claudeId?: string } = {};
+        if (trimmed !== existingSession.name) {
+          patch.name = trimmed;
+        }
+        if (trimmedClaudeId !== existingSession.claudeId) {
+          patch.claudeId = trimmedClaudeId;
+        }
+        if (patch.name !== undefined || patch.claudeId !== undefined) {
+          await updateSession(state.sessionId!, patch);
+        }
       }
       onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCopyClaudeId(): Promise<void> {
+    const trimmed: string = claudeIdInput.trim();
+    if (trimmed === "") {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      setCopiedClaudeId(true);
+      window.setTimeout(() => {
+        setCopiedClaudeId(false);
+      }, 1500);
+    } catch {
+      // Clipboard refused (e.g., insecure context) — silently ignore.
     }
   }
 
@@ -194,6 +227,43 @@ function SessionDialogForm({
             autoFocus
             required
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="session-claude-id">
+            {state.mode === "edit" ? "Claude session ID" : "Resume Claude session (optional)"}
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="session-claude-id"
+              value={claudeIdInput}
+              onChange={(e) => setClaudeIdInput(e.target.value)}
+              placeholder={
+                state.mode === "edit"
+                  ? existingSession?.claudeId === ""
+                    ? "auto-detected — not yet captured"
+                    : ""
+                  : "Leave empty for new session, or paste a Claude session UUID"
+              }
+              className="flex-1 font-mono text-xs"
+            />
+            {state.mode === "edit" && (
+              <button
+                type="button"
+                onClick={() => void handleCopyClaudeId()}
+                disabled={claudeIdInput.trim() === ""}
+                className="bg-bg-2 border-line-soft text-fg-1 hover:bg-bg-3 inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1.5 text-[11px] disabled:opacity-40"
+                title="Copy Claude session ID"
+              >
+                <I.copy />
+                {copiedClaudeId ? "Copied" : "Copy"}
+              </button>
+            )}
+          </div>
+          <p className="text-fg-3 text-[10.5px]">
+            {state.mode === "edit"
+              ? "Override to point this session at a different Claude transcript. Takes effect on next restart (claude --resume <id>)."
+              : "If set, the new session boots with claude --resume <id> to continue an existing transcript."}
+          </p>
         </div>
         <div className="space-y-2">
           <p className="text-fg-2 text-xs font-medium">Agent</p>

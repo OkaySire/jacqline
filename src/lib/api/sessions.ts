@@ -32,11 +32,13 @@ export async function sessionCreate(
   projectId: string,
   name?: string,
   withClaude?: boolean,
+  resumeClaudeSessionId?: string,
 ): Promise<SessionMeta> {
   const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_create", {
     projectId,
     name: name ?? null,
     withClaude: withClaude ?? null,
+    resumeClaudeSessionId: resumeClaudeSessionId ?? null,
   });
   return fromRaw(raw);
 }
@@ -62,10 +64,12 @@ export async function sessionKill(sessionId: string): Promise<void> {
 export async function sessionRestart(
   sessionId: string,
   withClaude?: boolean,
+  resumeClaudeSessionId?: string,
 ): Promise<SessionMeta> {
   const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_restart", {
     sessionId,
     withClaude: withClaude ?? null,
+    resumeClaudeSessionId: resumeClaudeSessionId ?? null,
   });
   return fromRaw(raw);
 }
@@ -74,10 +78,14 @@ export async function sessionDelete(sessionId: string): Promise<void> {
   await invoke<void>("session_delete", { sessionId });
 }
 
-export async function sessionUpdateMeta(sessionId: string, name: string): Promise<SessionMeta> {
+export async function sessionUpdateMeta(
+  sessionId: string,
+  patch: { readonly name?: string; readonly claudeId?: string },
+): Promise<SessionMeta> {
   const raw: RawSessionMeta = await invoke<RawSessionMeta>("session_update_meta", {
     sessionId,
-    name,
+    name: patch.name ?? null,
+    claudeId: patch.claudeId ?? null,
   });
   return fromRaw(raw);
 }

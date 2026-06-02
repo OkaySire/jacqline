@@ -6,6 +6,7 @@ import {
   sessionKill,
   sessionListByProject,
   sessionRestart,
+  sessionUpdateMeta,
 } from "@/lib/api/sessions";
 import type { SessionMeta } from "@/types/session";
 
@@ -36,12 +37,15 @@ interface SessionsState {
   /**
    * Spawn a new session in the project, always. `withClaude=false` spawns
    * the project's shell without running `claude` inside — useful as a
-   * fallback when `claude` isn't installed / on the PATH.
+   * fallback when `claude` isn't installed / on the PATH. When
+   * `resumeClaudeSessionId` is set, the preamble runs `claude --resume <id>`
+   * instead of plain `claude`.
    */
   readonly createSession: (
     projectId: string,
     name?: string,
     withClaude?: boolean,
+    resumeClaudeSessionId?: string,
   ) => Promise<SessionMeta>;
 
   /** Kill a specific session. The backend marks it `stopped` in SQL. */
@@ -53,7 +57,23 @@ interface SessionsState {
    * the shell (shell-only fallback). Backend rejects if it's already
    * running.
    */
-  readonly restartSession: (sessionId: string, withClaude?: boolean) => Promise<SessionMeta>;
+  readonly restartSession: (
+    sessionId: string,
+    withClaude?: boolean,
+    resumeClaudeSessionId?: string,
+  ) => Promise<SessionMeta>;
+
+  /**
+   * Update a session's mutable metadata. `name` renames; `claudeId`
+   * overrides the Claude session UUID — used to wire up `claude --resume`
+   * on the next restart, or to fix a row whose watcher didn't intercept.
+   * The backend just writes the SQL row here; restarting to apply the
+   * new id is the caller's responsibility.
+   */
+  readonly updateSession: (
+    sessionId: string,
+    patch: { readonly name?: string; readonly claudeId?: string },
+  ) => Promise<SessionMeta>;
 
   /** Permanently remove a session — drops the PTY if any, deletes the row. */
   readonly deleteSession: (sessionId: string) => Promise<void>;
@@ -187,8 +207,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     projectId: string,
     name?: string,
     withClaude?: boolean,
+    resumeClaudeSessionId?: string,
   ): Promise<SessionMeta> => {
-    const meta: SessionMeta = await sessionCreate(projectId, name, withClaude);
+    const meta: SessionMeta = await sessionCreate(
+      projectId,
+      name,
+      withClaude,
+      resumeClaudeSessionId,
+    );
     set((s: SessionsState) => {
       const nextActive: Map<string, string> = new Map(s.activeSessionByProject);
       nextActive.set(projectId, meta.id);
@@ -210,8 +236,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     // list as `stopped`.
   },
 
-  restartSession: async (sessionId: string, withClaude?: boolean): Promise<SessionMeta> => {
-    const meta: SessionMeta = await sessionRestart(sessionId, withClaude);
+  restartSession: async (
+    sessionId: string,
+    withClaude?: boolean,
+    resumeClaudeSessionId?: string,
+  ): Promise<SessionMeta> => {
+    const meta: SessionMeta = await sessionRestart(sessionId, withClaude, resumeClaudeSessionId);
     set((state: SessionsState) => {
       const nextSessions: Map<string, readonly SessionMeta[]> = new Map(state.sessionsByProject);
       const current: readonly SessionMeta[] = nextSessions.get(meta.projectId) ?? [];
@@ -233,6 +263,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         lastExitByProject: nextExits,
       };
     });
+    return meta;
+  },
+
+  updateSession: async (
+    sessionId: string,
+    patch: { readonly name?: string; readonly claudeId?: string },
+  ): Promise<SessionMeta> => {
+    const meta: SessionMeta = await sessionUpdateMeta(sessionId, patch);
+    set((state: SessionsState) => ({
+      sessionsByProject: withSessionUpdated(state.sessionsByProject, meta),
+    }));
     return meta;
   },
 

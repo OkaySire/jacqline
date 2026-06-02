@@ -120,57 +120,80 @@ impl PtyManager {
 
 // ----- spawn helpers --------------------------------------------------------
 
-/// Real claude preamble for POSIX shells.
+/// Render the `claude` invocation line for a preamble. When
+/// `resume_id` is `Some(uuid)`, expands to `claude --resume '<uuid>'`
+/// (single-quoted — claude session ids are UUIDs so no single-quote
+/// escaping concerns). Otherwise plain `claude`.
+fn claude_invocation(resume_id: Option<&str>) -> String {
+    match resume_id {
+        Some(id) if !id.trim().is_empty() => {
+            // Defense in depth: strip any single quotes from the id so a
+            // malicious / mistyped value can't break out of the quoted
+            // arg. Real UUIDs never contain `'`.
+            let sanitized: String = id.trim().replace('\'', "");
+            format!("claude --resume '{sanitized}'")
+        }
+        _ => "claude".to_owned(),
+    }
+}
+
+/// Inline POSIX preamble for native `bash`/`zsh` on Linux+macOS, passed
+/// via `<shell> -l -i -c <preamble>`. The `wsl.exe → bash` chain
+/// mangles long single-arg quoting (PR #34 diagnostic), so WSL goes
+/// through a temp `.sh` file (see [`build_posix_script`] +
+/// [`prepare_wsl_script`]) instead.
 ///
-/// Native bash / zsh on Linux + macOS get this via `bash -l -i -c <preamble>`.
-/// The `wsl.exe → bash` chain mangles long single-arg quoting (confirmed by
-/// the diagnostic probe in PR #34), so WSL goes through a temp `.sh` file
-/// instead (see [`CLAUDE_BASH_SCRIPT`] + [`prepare_wsl_script`]).
-///
-/// Octal escapes (`\033`) are interpreted by bash's `printf`, not the Rust
-/// literal — every backslash is doubled in source.
-const POSIX_CLAUDE_PREAMBLE: &str = "\
-    printf '\\033[36m> jacqline: spawning claude...\\033[0m\\r\\n'; \
-    type -p claude || printf '\\033[33m\\xe2\\x9a\\xa0 claude not found in PATH\\033[0m\\r\\n'; \
-    printf 'PATH: %s\\r\\n' \"$PATH\"; \
-    claude; rc=$?; \
-    printf '\\033[31m< claude exited with %d\\033[0m\\r\\n' \"$rc\"; \
-    exec bash -i\
-";
+/// Octal escapes (`\033`) are interpreted by bash's `printf`, not the
+/// Rust literal — every backslash is doubled in source.
+fn build_posix_inline_preamble(resume_id: Option<&str>) -> String {
+    let claude_inv: String = claude_invocation(resume_id);
+    format!(
+        "\
+        printf '\\033[36m> jacqline: spawning claude...\\033[0m\\r\\n'; \
+        type -p claude || printf '\\033[33m\\xe2\\x9a\\xa0 claude not found in PATH\\033[0m\\r\\n'; \
+        printf 'PATH: %s\\r\\n' \"$PATH\"; \
+        {claude_inv}; rc=$?; \
+        printf '\\033[31m< claude exited with %d\\033[0m\\r\\n' \"$rc\"; \
+        exec bash -i\
+        "
+    )
+}
 
 /// File-friendly preamble for POSIX shells (bash / zsh / dash / sh / ksh).
 /// Written to disk and run as `<detected_shell> -l -i /mnt/c/.../<id>.sh`.
-///
-/// Because we now spawn the user's *actual* login shell with `-l -i`
-/// (see [`crate::wsl_shell`]), rc files are sourced natively —
-/// `.zshrc` / `.bash_profile` / wherever they put their nvm / asdf /
-/// fnm / volta / mise / nodenv setup. No more manual PATH rebuild, no
-/// more `nvm use default` shimming, no more first-bin-wins glob.
-const POSIX_CLAUDE_SCRIPT: &str = r#"#!/bin/sh
+fn build_posix_script(resume_id: Option<&str>) -> String {
+    let claude_inv: String = claude_invocation(resume_id);
+    format!(
+        r#"#!/bin/sh
 printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
 command -v claude >/dev/null 2>&1 || printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
 printf 'PATH: %s\r\n' "$PATH"
 
-claude
+{claude_inv}
 rc=$?
 
 printf '\033[31m< claude exited with %d\033[0m\r\n' "$rc"
 
 # Drop into the user's preferred shell — by now claude is done and they
 # expect zsh / bash / whatever $SHELL is.
-exec "${SHELL:-/bin/sh}" -i
-"#;
+exec "${{SHELL:-/bin/sh}}" -i
+"#
+    )
+}
 
-/// fish-syntax port of [`POSIX_CLAUDE_SCRIPT`]. fish has its own control
+/// fish-syntax port of [`build_posix_script`]. fish has its own control
 /// flow keywords (`; or` instead of `||`), variable names (`$status`
 /// instead of `$?`), and no `${VAR:-default}` expansion. Same visible
 /// behavior.
-const FISH_CLAUDE_SCRIPT: &str = r#"#!/usr/bin/env fish
+fn build_fish_script(resume_id: Option<&str>) -> String {
+    let claude_inv: String = claude_invocation(resume_id);
+    format!(
+        r#"#!/usr/bin/env fish
 printf '\033[36m> jacqline: spawning claude...\033[0m\r\n'
 command -v claude >/dev/null 2>&1; or printf '\033[33m\xe2\x9a\xa0 claude not found in PATH\033[0m\r\n'
 printf 'PATH: %s\r\n' "$PATH"
 
-claude
+{claude_inv}
 set rc $status
 
 printf '\033[31m< claude exited with %d\033[0m\r\n' $rc
@@ -181,7 +204,9 @@ if set -q SHELL
 else
     exec fish -i
 end
-"#;
+"#
+    )
+}
 
 /// PowerShell equivalent of [`POSIX_CLAUDE_PREAMBLE`]. Relies on `-NoExit`
 /// at the launcher level to keep the shell alive after `claude` returns.
@@ -220,12 +245,13 @@ fn prepare_wsl_script(
     app: &AppHandle,
     session_id: &str,
     family: ShellFamily,
+    resume_id: Option<&str>,
 ) -> AppResult<std::path::PathBuf> {
     let dir: std::path::PathBuf = app.path().app_local_data_dir()?.join("sessions");
     std::fs::create_dir_all(&dir)?;
-    let (ext, content): (&str, &str) = match family {
-        ShellFamily::Posix => ("sh", POSIX_CLAUDE_SCRIPT),
-        ShellFamily::Fish => ("fish", FISH_CLAUDE_SCRIPT),
+    let (ext, content): (&str, String) = match family {
+        ShellFamily::Posix => ("sh", build_posix_script(resume_id)),
+        ShellFamily::Fish => ("fish", build_fish_script(resume_id)),
     };
     let path: std::path::PathBuf = dir.join(format!("{session_id}.{ext}"));
     std::fs::write(&path, content)?;
@@ -284,6 +310,7 @@ fn build_command(
     with_claude: bool,
     wsl_script_path: Option<&str>,
     detected_shell: Option<&DetectedShell>,
+    resume_id: Option<&str>,
 ) -> CommandBuilder {
     let mut cmd: CommandBuilder = match project.shell_kind {
         ShellKind::Native => {
@@ -327,7 +354,7 @@ fn build_command(
                     }
                     if with_claude {
                         c.arg("-c");
-                        c.arg(POSIX_CLAUDE_PREAMBLE);
+                        c.arg(build_posix_inline_preamble(resume_id));
                     }
                     c
                 }
@@ -413,6 +440,7 @@ fn spawn_pty_tasks(
     project: &Project,
     session_id: &str,
     with_claude: bool,
+    resume_claude_id: Option<&str>,
 ) -> AppResult<SpawnedPty> {
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -441,7 +469,7 @@ fn spawn_pty_tasks(
                 .as_ref()
                 .map(|s| s.family)
                 .unwrap_or(ShellFamily::Posix);
-            match prepare_wsl_script(&app, session_id, family) {
+            match prepare_wsl_script(&app, session_id, family, resume_claude_id) {
                 Ok(p) => Some(p),
                 Err(err) => {
                     tracing::warn!(
@@ -462,6 +490,7 @@ fn spawn_pty_tasks(
         with_claude,
         wsl_script_arg.as_deref(),
         detected_shell.as_ref(),
+        resume_claude_id,
     );
     let mut child = pair
         .slave
@@ -637,8 +666,12 @@ pub async fn session_create(
     project_id: String,
     name: Option<String>,
     with_claude: Option<bool>,
+    resume_claude_session_id: Option<String>,
 ) -> AppResult<SessionMeta> {
     let with_claude: bool = with_claude.unwrap_or(true);
+    let resume_id_trimmed: Option<String> = resume_claude_session_id
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty());
     let (project, session_name): (Project, String) = {
         let conn = db.lock()?;
         let project: Project = project::get_by_id(&conn, &project_id)?;
@@ -652,13 +685,25 @@ pub async fn session_create(
     let session_id: String = Uuid::new_v4().to_string();
     let started_at: i64 = now_millis();
 
-    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id, with_claude)?;
+    let spawned: SpawnedPty = spawn_pty_tasks(
+        app,
+        db.arc(),
+        &project,
+        &session_id,
+        with_claude,
+        resume_id_trimmed.as_deref(),
+    )?;
+
+    // When the user supplied a resume id, persist it on the row right
+    // away — the claude_watch task will overwrite with whatever Claude
+    // actually starts (might be a different id if --resume failed).
+    let initial_claude_id: String = resume_id_trimmed.clone().unwrap_or_default();
 
     let meta = SessionMeta {
         id: session_id.clone(),
         project_id: project.id.clone(),
         name: session_name,
-        claude_id: String::new(),
+        claude_id: initial_claude_id,
         claude_version: String::new(),
         status: SessionStatus::Running,
         pid: spawned.pid,
@@ -700,6 +745,7 @@ pub async fn session_restart(
     manager: State<'_, PtyManager>,
     session_id: String,
     with_claude: Option<bool>,
+    resume_claude_session_id: Option<String>,
 ) -> AppResult<SessionMeta> {
     let with_claude: bool = with_claude.unwrap_or(true);
     if manager.contains(&session_id)? {
@@ -715,8 +761,30 @@ pub async fn session_restart(
         (project, existing)
     };
 
+    // Resume id resolution: explicit param wins. Otherwise fall back to
+    // the existing `claude_id` on the row so a restart of a previously-
+    // intercepted session naturally re-resumes the same Claude session.
+    let resume_id_trimmed: Option<String> = resume_claude_session_id
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let trimmed: String = existing.claude_id.trim().to_owned();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        });
+
     let started_at: i64 = now_millis();
-    let spawned: SpawnedPty = spawn_pty_tasks(app, db.arc(), &project, &session_id, with_claude)?;
+    let spawned: SpawnedPty = spawn_pty_tasks(
+        app,
+        db.arc(),
+        &project,
+        &session_id,
+        with_claude,
+        resume_id_trimmed.as_deref(),
+    )?;
 
     {
         let conn = db.lock()?;

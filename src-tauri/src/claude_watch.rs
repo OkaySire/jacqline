@@ -37,7 +37,12 @@ use crate::project::{Project, ShellKind};
 use crate::sessions;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
-const POLL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Claude UI takes a moment to start, then waits for first user input
+/// before writing the JSONL on some setups — bumped from 30 s after PR
+/// #45 timed out in real WSL usage. If the watcher still misses,
+/// the timeout-side diagnostics in [`poll_for_metadata`] dump the
+/// actual `~/.claude/projects/` contents so we can compare encodings.
+const POLL_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,23 +138,52 @@ async fn poll_for_metadata(
     spawned_at_ms: i64,
     cancel: &Arc<AtomicBool>,
 ) -> Option<ClaudeMetadataPayload> {
-    let deadline: Instant = Instant::now() + POLL_TIMEOUT;
+    let start: Instant = Instant::now();
+    let deadline: Instant = start + POLL_TIMEOUT;
     let encoded_cwd: String = encode_cwd(&project.cwd);
 
+    tracing::info!(
+        cwd = %project.cwd,
+        encoded_cwd = %encoded_cwd,
+        shell_kind = ?project.shell_kind,
+        shell_value = %project.shell_value,
+        spawned_at_ms,
+        timeout_s = POLL_TIMEOUT.as_secs(),
+        "claude watcher started",
+    );
+
+    // One-shot at startup: list what's already in `~/.claude/projects/` so
+    // we can compare Claude CLI's actual directory naming against our
+    // `encoded_cwd`. Logged once at INFO; cheap (single subprocess) and
+    // invaluable when the watcher times out.
+    log_projects_dir_listing(project, "at_start");
+
+    let mut poll_count: u32 = 0;
     loop {
         if cancel.load(Ordering::SeqCst) {
             return None;
         }
         if Instant::now() >= deadline {
+            // Final diagnostic dump before we give up — saves a triage
+            // round-trip when the user reports "claude watcher timed out".
+            log_projects_dir_listing(project, "at_timeout");
+            log_watch_dir_listing(project, &encoded_cwd);
             return None;
         }
 
+        poll_count += 1;
         let found: Option<String> = match project.shell_kind {
             ShellKind::Native => find_latest_jsonl_native(&encoded_cwd, spawned_at_ms),
             ShellKind::Wsl => {
                 find_latest_jsonl_wsl(&project.shell_value, &encoded_cwd, spawned_at_ms)
             }
         };
+        tracing::debug!(
+            poll = poll_count,
+            elapsed = ?start.elapsed(),
+            found = ?found,
+            "claude watcher poll",
+        );
 
         if let Some(path) = found {
             let first_line: Option<String> = match project.shell_kind {
@@ -165,6 +199,94 @@ async fn poll_for_metadata(
 
         tokio::time::sleep(POLL_INTERVAL).await;
     }
+}
+
+/// Log `ls -la ~/.claude/projects/` so we can see (a) whether the
+/// `.claude` dir even exists for this user, and (b) the exact directory
+/// names Claude CLI creates — which we can then compare against our
+/// `encoded_cwd` to spot encoding mismatches.
+fn log_projects_dir_listing(project: &Project, when: &str) {
+    let output: Option<String> = match project.shell_kind {
+        ShellKind::Native => list_projects_dir_native(),
+        ShellKind::Wsl => list_projects_dir_wsl(&project.shell_value),
+    };
+    match output {
+        Some(text) => {
+            tracing::info!(
+                when,
+                listing = %text.trim(),
+                "claude watcher: ~/.claude/projects/ listing",
+            );
+        }
+        None => {
+            tracing::warn!(when, "claude watcher: failed to list ~/.claude/projects/",);
+        }
+    }
+}
+
+/// Log `ls -lt <watch_dir>` (no mtime filter). If Claude has written ANY
+/// JSONL there but our `find -newermt` filter rejected it, this surfaces
+/// the file + its real mtime so we can decide whether to relax the
+/// filter.
+fn log_watch_dir_listing(project: &Project, encoded_cwd: &str) {
+    let output: Option<String> = match project.shell_kind {
+        ShellKind::Native => list_watch_dir_native(encoded_cwd),
+        ShellKind::Wsl => list_watch_dir_wsl(&project.shell_value, encoded_cwd),
+    };
+    tracing::warn!(
+        encoded_cwd,
+        listing = %output.as_deref().unwrap_or("(no output)").trim(),
+        "claude watcher: final watch dir listing on timeout",
+    );
+}
+
+fn list_watch_dir_native(encoded_cwd: &str) -> Option<String> {
+    let home: PathBuf = dirs_home()?;
+    let dir: PathBuf = home.join(".claude").join("projects").join(encoded_cwd);
+    let entries = std::fs::read_dir(&dir).ok()?;
+    Some(
+        entries
+            .flatten()
+            .map(|e| format!("{}", e.path().display()))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+fn list_watch_dir_wsl(distro: &str, encoded_cwd: &str) -> Option<String> {
+    let cmd: String = format!("ls -lt \"$HOME/.claude/projects/{encoded_cwd}\" 2>&1");
+    let output = silent_command("wsl.exe")
+        .args(["-d", distro, "--", "sh", "-c", &cmd])
+        .output()
+        .ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn list_projects_dir_native() -> Option<String> {
+    let home: PathBuf = dirs_home()?;
+    let dir: PathBuf = home.join(".claude").join("projects");
+    let entries = std::fs::read_dir(&dir).ok()?;
+    let mut names: Vec<String> = entries
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    Some(names.join("\n"))
+}
+
+fn list_projects_dir_wsl(distro: &str) -> Option<String> {
+    let output = silent_command("wsl.exe")
+        .args([
+            "-d",
+            distro,
+            "--",
+            "sh",
+            "-c",
+            "ls -la \"$HOME/.claude/projects\" 2>&1",
+        ])
+        .output()
+        .ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// `/home/jadei/Projects/X` → `-home-jadei-Projects-X`. Strips trailing

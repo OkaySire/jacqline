@@ -140,7 +140,7 @@ async fn poll_for_metadata(
 ) -> Option<ClaudeMetadataPayload> {
     let start: Instant = Instant::now();
     let deadline: Instant = start + POLL_TIMEOUT;
-    let encoded_cwd: String = encode_cwd(&project.cwd);
+    let encoded_cwd: String = encode_cwd_for_project(project);
 
     tracing::info!(
         cwd = %project.cwd,
@@ -289,11 +289,56 @@ fn list_projects_dir_wsl(distro: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// `/home/jadei/Projects/X` → `-home-jadei-Projects-X`. Strips trailing
-/// slash, replaces every remaining `/` with `-`. Claude CLI's own
-/// encoding for the per-cwd transcript subdirectory.
-fn encode_cwd(cwd: &str) -> String {
-    cwd.trim_end_matches('/').replace('/', "-")
+/// Encode the project's cwd into Claude CLI's transcript-directory name.
+/// Claude writes to `~/.claude/projects/<encoded-cwd>/`, where the
+/// encoding is: take the absolute *Linux* path Claude sees inside the
+/// shell, strip a trailing `/`, replace every remaining `/` with `-`
+/// (e.g. `/home/jadei/Projects/X` → `-home-jadei-Projects-X`).
+///
+/// For native projects the cwd is already a Linux/Unix path — encoding
+/// is direct. For **WSL** projects, however, the cwd is usually the
+/// **Windows UNC path** the user picked through the Windows file dialog
+/// (`\\wsl.localhost\Ubuntu-24.04\home\jadei\Projects\X`). Claude CLI
+/// runs *inside* WSL and never sees that UNC string — it sees the
+/// straight Linux path. We have to do the same translation before
+/// applying the `/` → `-` rule, otherwise the watcher polls a directory
+/// that doesn't exist (the PR #46 timeout on Windows confirmed this).
+fn encode_cwd_for_project(project: &Project) -> String {
+    let linux_cwd: String = match project.shell_kind {
+        ShellKind::Wsl => wsl_linux_cwd(&project.cwd, &project.shell_value),
+        ShellKind::Native => project.cwd.clone(),
+    };
+    linux_cwd.trim_end_matches('/').replace('/', "-")
+}
+
+/// Strip the `\\wsl.localhost\<distro>\` (or legacy `\\wsl$\<distro>\`)
+/// prefix from a Windows UNC path so what's left is the Linux-side
+/// absolute path WSL processes use. Backslashes are flipped to forward
+/// slashes for the encoder. Idempotent for paths that are already Linux
+/// style.
+///
+/// The prefix match is case-insensitive because Windows treats the UNC
+/// host name as case-insensitive even though the path Linux sees is
+/// strictly case-sensitive.
+fn wsl_linux_cwd(cwd: &str, distro: &str) -> String {
+    let unix_slashes: String = cwd.replace('\\', "/");
+    let lower: String = unix_slashes.to_lowercase();
+    let distro_lower: String = distro.to_lowercase();
+    let candidates: [String; 2] = [
+        format!("//wsl.localhost/{distro_lower}/"),
+        format!("//wsl$/{distro_lower}/"),
+    ];
+    for prefix in &candidates {
+        if let Some(rest) = lower.strip_prefix(prefix.as_str()) {
+            // Index into the original (non-lowered) string at the same
+            // byte offset — ASCII-only prefix, so byte counts line up.
+            let tail: &str = &unix_slashes[prefix.len()..];
+            // Sanity check that the case-insensitive match aligned.
+            debug_assert_eq!(tail.to_lowercase(), rest);
+            return format!("/{tail}");
+        }
+    }
+    unix_slashes
 }
 
 fn find_latest_jsonl_native(encoded_cwd: &str, after_ms: i64) -> Option<String> {
@@ -392,4 +437,62 @@ fn dirs_home() -> Option<PathBuf> {
         return Some(PathBuf::from(profile));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wsl_linux_cwd_unc_wsl_localhost() {
+        // The case that bit us on the user's machine — UNC path from
+        // Windows file picker, distro casing preserved.
+        let got: String = wsl_linux_cwd(
+            r"\\wsl.localhost\Ubuntu-24.04\home\jadei\Projects\TestJacqline",
+            "Ubuntu-24.04",
+        );
+        assert_eq!(got, "/home/jadei/Projects/TestJacqline");
+    }
+
+    #[test]
+    fn wsl_linux_cwd_unc_wsl_dollar_legacy() {
+        let got: String = wsl_linux_cwd(r"\\wsl$\Debian\home\user\code", "Debian");
+        assert_eq!(got, "/home/user/code");
+    }
+
+    #[test]
+    fn wsl_linux_cwd_host_name_case_insensitive() {
+        // Mixed-case host name + distro — Windows treats both as
+        // case-insensitive; the Linux tail keeps its original casing.
+        let got: String = wsl_linux_cwd(
+            r"\\WSL.LocalHost\Ubuntu-24.04\Home\User\Repo",
+            "Ubuntu-24.04",
+        );
+        assert_eq!(got, "/Home/User/Repo");
+    }
+
+    #[test]
+    fn wsl_linux_cwd_already_linux_path() {
+        let got: String = wsl_linux_cwd("/home/jadei/Projects/X", "Ubuntu-24.04");
+        assert_eq!(got, "/home/jadei/Projects/X");
+    }
+
+    #[test]
+    fn encode_for_unc_wsl_project_matches_claude_dir() {
+        use crate::project::{Project, ShellKind};
+        let project = Project {
+            id: "p".into(),
+            name: "n".into(),
+            cwd: r"\\wsl.localhost\Ubuntu-24.04\home\jadei\Projects\TestJacqline".into(),
+            shell_kind: ShellKind::Wsl,
+            shell_value: "Ubuntu-24.04".into(),
+            provider: String::new(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        assert_eq!(
+            encode_cwd_for_project(&project),
+            "-home-jadei-Projects-TestJacqline",
+        );
+    }
 }
